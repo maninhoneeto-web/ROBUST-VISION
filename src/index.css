@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer utilities {
+  /* SCANLINE EFFECT */
+  .scanline {
+    background: linear-gradient(
+      rgba(18, 16, 16, 0) 50%,
+      rgba(0, 0, 0, 0.25) 50%
+    );
+    background-size: 100% 4px;
+    z-index: 2;
+  }
+
+  /* LED indicator blinking */
+  .blink-red {
+    animation: blinkRed 1s infinite alternate;
+  }
+  
+  .blink-green {
+    animation: blinkGreen 1.5s infinite alternate;
+  }
+
+  /* Alarm overlay flashing */
+  .alarm-flash {
+    animation: alarmFlash 0.5s infinite alternate;
+  }
+
+  /* Target retro corners for CCTV feeds */
+  .hud-corner {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-color: rgba(34, 197, 94, 0.61);
+  }
+}
+
+@keyframes blinkRed {
+  0% { opacity: 0.3; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1.05); box-shadow: 0 0 12px rgba(239, 68, 68, 0.8); }
+}
+
+@keyframes blinkGreen {
+  0% { opacity: 0.4; }
+  100% { opacity: 1; box-shadow: 0 0 8px rgba(16, 185, 129, 0.6); }
+}
+
+@keyframes alarmFlash {
+  0% { background-color: rgba(239, 68, 68, 0.05); }
+  100% { background-color: rgba(239, 68, 68, 0.25); }
+}
+

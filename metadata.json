@@ -1,0 +1,6 @@
+{
+  "name": "Robust Vision",
+  "description": "Sistema de segurança inteligente de CFTV integrado com iSIC Lite, envio programado para WhatsApp e controle de acesso a DVRs por MAC/IP.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
