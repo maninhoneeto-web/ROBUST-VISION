@@ -40,6 +40,32 @@ import { convertUrlToBase64, generateMockCCTVPlaceholder, formatTime, formatDate
 
 export default function App() {
   // Persistence with LocalStorage
+  const [isSimplifiedMode, setIsSimplifiedMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem("rv_simplified_mode");
+    return saved ? JSON.parse(saved) : false;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("rv_simplified_mode", JSON.stringify(isSimplifiedMode));
+  }, [isSimplifiedMode]);
+
+  // Modern Non-Blocking App Notification State
+  const [appAlert, setAppAlert] = useState<{
+    isOpen: boolean;
+    message: string;
+    title: string;
+    type: "info" | "success" | "warn";
+  } | null>(null);
+
+  const showAppAlert = (message: string, title = "Aviso do Sistema", type: "info" | "success" | "warn" = "info") => {
+    setAppAlert({
+      isOpen: true,
+      message,
+      title,
+      type
+    });
+  };
+
   const [feeds, setFeeds] = useState<CameraFeed[]>(() => {
     const saved = localStorage.getItem("rv_feeds");
     return saved ? JSON.parse(saved) : INITIAL_FEEDS;
@@ -107,6 +133,14 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{success: boolean; n8nMsg: string; sbMsg: string} | null>(null);
 
+  // Autonomous n8n <-> Supabase simulator state
+  const [isAutonomousLoop, setIsAutonomousLoop] = useState(true);
+  const [simulatedTerminalLogs, setSimulatedTerminalLogs] = useState<string[]>(() => [
+    `[${new Date().toLocaleTimeString("pt-BR")}] 💻 [Sistema] Terminal de Telemetria Robust Vision inicializado.`,
+    `[${new Date().toLocaleTimeString("pt-BR")}] 🔌 [Conectividade] Aguardando gatilho de movimento de CFTV ou salvamento de cliente...`,
+    `[${new Date().toLocaleTimeString("pt-BR")}] 💡 [Supabase] Status: Autogerenciamento de tabelas 'clients_nds' & 'cctv_verification_logs' ON.`
+  ]);
+
   // Auto Photo Sending scheduler simulation
   const [autoPhotoSending, setAutoPhotoSending] = useState(false);
   const [lastAutoPhotoTrigger, setLastAutoPhotoTrigger] = useState<string>("");
@@ -127,7 +161,7 @@ export default function App() {
   }>>([]);
 
   // --- NEW STATES FOR ADMIN TAB CLIENTS FORM & DVR CLOUD ---
-  const [activeTab, setActiveTab] = useState<"video" | "admin_clients" | "dvr_integrations">("video");
+  const [activeTab, setActiveTab] = useState<"video" | "admin_clients" | "dvr_integrations" | "export_store">("video");
   const [clientTradingName, setClientTradingName] = useState("");
   const [clientWhatsApp, setClientWhatsApp] = useState("");
   const [clientOpenTime, setClientOpenTime] = useState("08:00");
@@ -313,6 +347,57 @@ export default function App() {
     return () => clearInterval(interval);
   }, [autoPhotoSending, systemMockTime, feeds, schedules]);
 
+  // Autonomous n8n <-> Supabase background simulation ticks
+  useEffect(() => {
+    if (!isAutonomousLoop) return;
+
+    const simulationSteps = [
+      () => {
+        const time = new Date().toLocaleTimeString("pt-BR");
+        const randomClient = registeredClients[Math.floor(Math.random() * registeredClients.length)] || { tradingName: "Farmácia Central", planName: "Bronze Monitor", paymentValue: "149,00" };
+        return [
+          `[${time}] ⚡ [n8n Webhook] NOVO GATILHO: Recebido evento 'billing_update' para o cliente "${randomClient.tradingName}".`,
+          `[${time}] 🧼 [n8n Node: Filtro] Tratando dados de cobrança: Plano: ${randomClient.planName} | Valor: R$ ${randomClient.paymentValue || "149,00"}.`,
+          `[${time}] 💾 [Supabase Query] Executando query: UPDATE clients_nds SET payment_status = '${randomClient.paymentStatus || "Pago"}' WHERE trading_name = '${randomClient.tradingName}'`,
+          `[${time}] ✅ [Banco de Dados] Supabase confirmou atualização! Registro de faturamento do cliente sincronizado automaticamente.`
+        ];
+      },
+      () => {
+        const time = new Date().toLocaleTimeString("pt-BR");
+        const randomCam = feeds[Math.floor(Math.random() * feeds.length)] || { name: "Câmera 01" };
+        return [
+          `[${time}] 🚨 [Ameaça CFTV] Inteligência perimetral detectou movimento suspeito na "${randomCam.name}".`,
+          `[${time}] ⚡ [n8n Webhook] Enviando payload JSON de imagem analítica para o roteador de alertas do n8n...`,
+          `[${time}] 🕵️ [n8n Node: IA Gemini] Validando com IA: Retorno foi 'ALERTA' (Atividade humana detectada).`,
+          `[${time}] 💾 [Supabase Insert] Inserindo registro na tabela 'cctv_verification_logs' com status 'ALERTA'.`,
+          `[${time}] 📱 [n8n Direct Out] Disparando alerta de segurança com foto e descrição direto para o WhatsApp do plantão!`
+        ];
+      },
+      () => {
+        const time = new Date().toLocaleTimeString("pt-BR");
+        return [
+          `[${time}] 🔍 [Keep-Alive] Monitorando conexões de rede ativas de DVRs...`,
+          `[${time}] 📡 [n8n Webhook] Testando ping com endpoint da automação... Sucesso (HTTP 200).`,
+          `[${time}] 🗳️ [Supabase Sync] Lendo tabela 'authorized_dvrs_mac'. Todos os dvr_macs simulados estão válidos e autorizados.`
+        ];
+      }
+    ];
+
+    let counter = 0;
+    const interval = setInterval(() => {
+      const stepGenerator = simulationSteps[counter % simulationSteps.length];
+      const newLogs = stepGenerator();
+      
+      setSimulatedTerminalLogs(prev => {
+        const updated = [...newLogs, ...prev];
+        return updated.slice(0, 35);
+      });
+      counter++;
+    }, 12000);
+
+    return () => clearInterval(interval);
+  }, [isAutonomousLoop, registeredClients, feeds]);
+
   // Helper to determine if a mock time is within a schedule's range
   const isTimeInBetween = (time: string, start: string, end: string): boolean => {
     const [mockH, mockM] = time.split(":").map(Number);
@@ -338,7 +423,7 @@ export default function App() {
     const camName = customMetaName || selectedFeed.name;
     
     if (!sourceImage) {
-      alert("Nenhuma imagem pré-carregada para esta câmera ou sandbox vazios.");
+      showAppAlert("Nenhuma imagem pré-carregada para esta câmera ou sandbox vazios.", "Feed de Câmeras Vazio", "warn");
       return;
     }
 
@@ -454,7 +539,7 @@ export default function App() {
   const handleProvisionRemoteDvr = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!adminDvrId || !adminDvrUser || !adminDvrPassword || !newDevName || !newDevValue) {
-      alert("Por favor, preencha todos os dados admin do DVR (ID, Usuário, Senha) e as diretrizes do filtro MAC/IP.");
+      showAppAlert("Por favor, preencha todos os dados admin do DVR (ID, Usuário, Senha) e as diretrizes do filtro MAC/IP.", "Dados Incompletos", "warn");
       return;
     }
 
@@ -493,7 +578,7 @@ export default function App() {
     setNewDevName("");
     setNewDevValue("");
     setIsProvisioning(false);
-    alert(`Sucesso! DVR com ID "${adminDvrId}" autenticado. Filtro de segurança de rede inserido remotamente para o dispositivo "${newDevName}".`);
+    showAppAlert(`Sucesso! DVR com ID "${adminDvrId}" autenticado. Filtro de segurança de rede inserido remotamente para o dispositivo "${newDevName}".`, "Dispositivo Provisionado", "success");
   };
 
   // Trigger automated predetermined photo sending mock
@@ -502,7 +587,7 @@ export default function App() {
     const activeRules = schedules.filter(s => s.enabled && isTimeInBetween(systemMockTime, s.startTime, s.endTime));
     
     if (activeRules.length === 0) {
-      alert(`Simulador de Envio Programado:\nO relógio simulado atual é ${systemMockTime} que está FORA de todos os agendamentos de WhatsApp cadastrados e ativos. Para podermos simular o envio periódico programado, ajuste o relógio de teste ou ative o agendamento correspondente.`);
+      showAppAlert(`Simulador de Envio Programado:\nO relógio simulado atual de teste é ${systemMockTime}, o qual se encontra FORA do limite de todos os agendamentos periódicos cadastrados e ativos. Para podermos simular o disparo, mude o relógio ou ative o agendamento correspondente.`, "Fora de Horário Ativo", "warn");
       return;
     }
 
@@ -540,7 +625,7 @@ export default function App() {
       sentToWhatsApp: true,
     };
     setLogs(prev => [schedLog, ...prev]);
-    alert(`✓ Foto agendada da "${camToUse.name}" enviada para o WhatsApp de todos os agendamentos ativos no horário de ${systemMockTime}!`);
+    showAppAlert(`✓ Foto agendada da "${camToUse.name}" enviada para o WhatsApp de todos os agendamentos ativos no horário de ${systemMockTime}!`, "Envio Programado Concluído", "success");
   };
 
   // Deep Synchronization with n8n and Supabase
@@ -596,7 +681,7 @@ export default function App() {
   const handleAddDevice = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDevName || !newDevValue) {
-      alert("Por favor, preencha todos os dados do dispositivo DVR.");
+      showAppAlert("Por favor, preencha todos os dados do dispositivo DVR.", "Campos Vazios", "warn");
       return;
     }
 
@@ -627,7 +712,7 @@ export default function App() {
   const handleAddPhoneToNewScheduleList = () => {
     if (!newSchedPhone || newSchedPhone.trim() === "") return;
     if (newSchedPhonesList.length >= 3) {
-      alert("Operação Não Permitida: É permitido configurar no máximo 3 números de WhatsApp programados por agendamento.");
+      showAppAlert("Operação Não Permitida: É permitido configurar no máximo 3 números de WhatsApp programados por agendamento para evitar spam.", "Limite de Telefones", "warn");
       return;
     }
     
@@ -639,7 +724,7 @@ export default function App() {
     }
     
     if (newSchedPhonesList.includes(formattedPhone)) {
-      alert("Este número de WhatsApp já foi incluído na lista temporária.");
+      showAppAlert("Este número de WhatsApp já foi incluído na lista temporária para este agendamento.", "Número Replicado", "warn");
       return;
     }
 
@@ -651,12 +736,12 @@ export default function App() {
   const handleAddSchedule = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSchedLabel || newSchedPhonesList.length === 0) {
-      alert("Por favor, dê uma descrição ao agendamento e adicione pelo menos um número de WhatsApp.");
+      showAppAlert("Por favor, forneça uma descrição/etiqueta ao agendamento e adicione pelo menos um número de WhatsApp.", "Campos Incompletos", "warn");
       return;
     }
 
     if (newSchedPhonesList.length > 3) {
-      alert("Erro de segurança: Não é permitido ultrapassar o limite de até 3 telefones programados.");
+      showAppAlert("Erro de segurança do servidor: Não é permitido ultrapassar o limite restrito de 3 telefones programados.", "Limite Excedido", "warn");
       return;
     }
 
@@ -705,7 +790,7 @@ export default function App() {
       e.stopPropagation();
     }
     if (!clientTradingName.trim() || !clientWhatsApp.trim()) {
-      alert("Por favor, preencha o Nome do Comércio e o número de WhatsApp.");
+      showAppAlert("Por favor, preencha o Nome do Comércio / Estabelecimento e o número de WhatsApp.", "Campos Vazios", "warn");
       return;
     }
 
@@ -838,7 +923,7 @@ export default function App() {
       e.stopPropagation();
     }
     if (!intelbrasDvrName.trim() || !intelbrasDvrAddressOrSerial.trim()) {
-      alert("Por favor, preencha a identificação e o endereço ou número de série do DVR.");
+      showAppAlert("Por favor, preencha a identificação e o endereço ou número de série do DVR.", "Campos Vazios", "warn");
       return;
     }
 
@@ -878,13 +963,11 @@ export default function App() {
       ...prev
     ]);
 
-    alert(`✓ DVR "${newDvr.name}" integrado com sucesso!`);
+    showAppAlert(`O dispositivo DVR "${newDvr.name}" foi integrado com sucesso nas diretrizes de monitoramento Robust Vision!`, "Dispositivo Integrado", "success");
   };
 
   const handleDeleteIntelbrasDvr = (id: string) => {
-    if (confirm("Remover a integração deste DVR?")) {
-      setIntelbrasDvrs(prev => prev.filter(d => d.id !== id));
-    }
+    setIntelbrasDvrs(prev => prev.filter(d => d.id !== id));
   };
 
   const handleToggleIntelbrasDvrStatus = (id: string) => {
@@ -961,6 +1044,21 @@ export default function App() {
               <span>iSIC LITE: {isicLiteConnected ? "CONECTADO" : "MANUAL"}</span>
             </button>
 
+            {/* Toggle Modo Compacto / Simplificado */}
+            <button
+              id="mode_toggle_btn"
+              onClick={() => setIsSimplifiedMode(!isSimplifiedMode)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                isSimplifiedMode 
+                  ? "bg-purple-500/20 text-purple-300 border-purple-500/40 hover:bg-purple-500/30" 
+                  : "bg-gray-800/80 text-gray-400 border-gray-700 hover:text-white"
+              }`}
+              title="Alternar Modo de Interface Simplificada"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span className="font-extrabold uppercase text-[10px]">VISTA: {isSimplifiedMode ? "COMPACTA" : "PADRÃO"}</span>
+            </button>
+
             {/* Live system status light */}
             <div className="bg-[#111827] border border-[#1E293B] rounded-lg p-1.5 px-3 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-[#10B981] blink-green" />
@@ -975,38 +1073,64 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         
         {/* UPPER BANNER ALERT & EXPLANATORY INTENT */}
-        <div id="welcome_banner" className="bg-gradient-to-r from-[#111827] to-[#0E1524] border border-[#1E293B] rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Shield className="w-4 h-4 text-[#10B981]" /> Controle de Monitoramento e Integração de Alarme WhatsApp
-            </h2>
-            <p className="text-xs text-gray-400 max-w-4xl">
-              Simulador profissional e painel de controle do **Robust Vision**. Integramos detecção de vídeo analítico ao aplicativo 
-              <strong className="text-gray-200"> iSIC Lite</strong>. Somente movimentos no horário programado disparam alertas no WhatsApp, evitando spam. 
-              Mapeie liberação de DVRs por endereços <strong className="text-gray-200">MAC corporativos e blocos de IP autorizados</strong>.
-            </p>
+        {!isSimplifiedMode ? (
+          <div id="welcome_banner" className="bg-gradient-to-r from-[#111827] to-[#0E1524] border border-[#1E293B] rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                <Shield className="w-4 h-4 text-[#10B981]" /> Controle de Monitoramento e Integração de Alarme WhatsApp
+              </h2>
+              <p className="text-xs text-gray-400 max-w-4xl">
+                Simulador profissional e painel de controle do **Robust Vision**. Integramos detecção de vídeo analítico ao aplicativo 
+                <strong className="text-gray-200"> iSIC Lite</strong>. Somente movimentos no horário programado disparam alertas no WhatsApp, evitando spam. 
+                Mapeie liberação de DVRs por endereços <strong className="text-gray-200">MAC corporativos e blocos de IP autorizados</strong>.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button 
+                type="button"
+                onClick={() => {
+                  setStats(prev => ({
+                    ...prev,
+                    sirenActive: !prev.sirenActive
+                  }));
+                }}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-mono font-semibold transition-all ${
+                  stats.sirenActive 
+                    ? "bg-red-600 border-red-500 text-white animate-bounce" 
+                    : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"
+                }`}
+              >
+                ⚠️ {stats.sirenActive ? "DESATIVAR ALARME" : "TESTAR SIRENE"}
+              </button>
+            </div>
           </div>
-          <div className="flex gap-2">
+        ) : (
+          <div id="welcome_banner_compact" className="bg-[#0E1524] border border-[#1E293B] rounded-xl px-4 py-2.5 flex items-center justify-between font-mono text-xs">
+            <div className="flex items-center gap-2 text-gray-300">
+              <Shield className="w-4 h-4 text-[#10B981] animate-pulse" />
+              <span>Modo Otimizado Ativo: Layout simplificado para operação rápida.</span>
+            </div>
             <button 
+              type="button"
               onClick={() => {
                 setStats(prev => ({
                   ...prev,
                   sirenActive: !prev.sirenActive
                 }));
               }}
-              className={`text-xs px-3 py-1.5 rounded-lg border font-mono font-semibold transition-all ${
+              className={`text-[10px] px-2.5 py-1 rounded border font-semibold uppercase font-mono ${
                 stats.sirenActive 
-                  ? "bg-red-600 border-red-500 text-white animate-bounce" 
+                  ? "bg-red-600 border-red-500 text-white animate-pulse" 
                   : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"
               }`}
             >
-              ⚠️ {stats.sirenActive ? "DESATIVAR ALARME" : "TESTAR SIRENE"}
+              Sirene {stats.sirenActive ? "ON" : "OFF"}
             </button>
           </div>
-        </div>
+        )}
 
         {/* TAB SWITCHER */}
-        <div id="tabs_navigation" className="grid grid-cols-1 sm:grid-cols-3 bg-[#0E1524] p-1.5 rounded-xl border border-[#1E293B] gap-1.5 font-mono text-xs">
+        <div id="tabs_navigation" className="grid grid-cols-1 sm:grid-cols-4 bg-[#0E1524] p-1.5 rounded-xl border border-[#1E293B] gap-1.5 font-mono text-xs">
           <button
             type="button"
             onClick={() => setActiveTab("video")}
@@ -1017,7 +1141,7 @@ export default function App() {
             }`}
           >
             <Tv className="w-4 h-4" />
-            <span>PAINEL DE OPERAÇÕES & FEEDS (CFTV)</span>
+            <span>PAINEL GERAL (CFTV)</span>
           </button>
           
           <button
@@ -1030,7 +1154,7 @@ export default function App() {
             }`}
           >
             <UserCheck className="w-4 h-4" />
-            <span>PAINEL ADMINISTRATIVO (N8N Webhook)</span>
+            <span>REGISTRO ADMINISTRATIVO</span>
           </button>
 
           <button
@@ -1043,7 +1167,20 @@ export default function App() {
             }`}
           >
             <Sliders className="w-4 h-4" />
-            <span>CONEXÕES DVR & CLOUD (INTELBRAS)</span>
+            <span>DVR INTELBRAS & CLOUD</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("export_store")}
+            className={`py-3 px-4 rounded-lg font-bold flex items-center justify-center gap-2.5 transition-all text-center focus:outline-none cursor-pointer ${
+              activeTab === "export_store"
+                ? "bg-amber-500/15 text-amber-400 border border-amber-500/20 shadow-lg shadow-amber-500/5 font-extrabold"
+                : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
+            }`}
+          >
+            <Smartphone className="w-4 h-4 text-amber-400" />
+            <span>EXPORTAR (PLAY STORE & APP STORE)</span>
           </button>
         </div>
 
@@ -1899,7 +2036,7 @@ export default function App() {
                 <div className="pt-5 mt-5 border-t border-gray-800">
                   <button
                     onClick={() => {
-                      alert(`Plano "${plan.name}" pré-selecionado! O faturamento será configurado sob medida pelo time operacional NDS.`);
+                      showAppAlert(`Plano "${plan.name}" pré-selecionado com sucesso! O faturamento será configurado sob medida pelo time operacional NDS.`, "Mensalidade Habilitada", "success");
                     }}
                     className={`w-full py-2 rounded-lg font-bold text-xs uppercase transition-all tracking-wider font-mono cursor-pointer ${
                       plan.isPopular 
@@ -1978,41 +2115,99 @@ export default function App() {
           </div>
 
           <div className="lg:col-span-7 bg-[#111827] border border-[#1E293B] rounded-2xl p-5 flex flex-col justify-between font-mono text-xs">
-            <div className="space-y-1 border-b border-[#1E293B] pb-3">
+            <div className="space-y-2 border-b border-[#1E293B] pb-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white uppercase">Console de Diagnóstico de Logs do Sincronizador</span>
-                <span className="text-[9px] px-2 py-0.5 rounded bg-gray-800 text-gray-400">TELEMETRIA ATIVA</span>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-blue-400">Plataformas Inteligentes</span>
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">Simulador Autônomo n8n ⇄ Supabase</h4>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${isAutonomousLoop ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 animate-pulse" : "bg-gray-800 text-gray-500"}`}>
+                    {isAutonomousLoop ? "● OPERAÇÃO AUTÔNOMA" : "● PAUSADO"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsAutonomousLoop(!isAutonomousLoop)}
+                    className="py-1 px-2.5 rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-all font-bold tracking-wider cursor-pointer text-[9px]"
+                  >
+                    {isAutonomousLoop ? "PAUSAR SIMULADOR" : "ATIVAR SIMULADOR"}
+                  </button>
+                </div>
               </div>
-              <p className="text-[11px] text-gray-400">Confirme o resultado das postagens no banco de dados corporativo NDS</p>
+              <p className="text-[10px] text-gray-500">Veja as interações autônomas ocorrendo de forma integrada entre o painel e os serviços na nuvem.</p>
             </div>
 
-            <div className="bg-[#090D14] rounded-xl border border-gray-800 p-4 space-y-2.5 flex-1 mt-4 overflow-y-auto max-h-[220px]">
-              {syncStatus ? (
-                <div className="space-y-2.5">
-                  <div className={`p-3 rounded-lg border text-[11px] ${syncStatus.success ? "bg-[#10B981]/10 border-[#10B981]/30 text-[#10B981]" : "bg-red-500/10 border-red-500/30 text-red-400"}`}>
-                    <p className="font-bold uppercase inline-flex items-center gap-1">
-                      {syncStatus.success ? <CheckCircle className="w-3.5 h-3.5" /> : <XCircle className="w-3.5 h-3.5" />} 
-                      {syncStatus.success ? "INTEGRAÇÕES EXECUTADAS COM SUCESSO" : "ERRO NOS PARÂMETROS"}
+            {/* LIVE AUTOMATION FLOW SCHEMATIC */}
+            <div className="p-3 bg-[#0A0E17]/90 border border-gray-800/80 rounded-xl my-3 space-y-2 text-[10px]">
+              <p className="text-gray-400 text-[9px] font-bold uppercase tracking-wider text-center">Estrutura do Fluxo de Informação Ativo</p>
+              <div className="grid grid-cols-5 items-center justify-between gap-1 text-center font-bold">
+                <div className="p-2 bg-blue-600/10 border border-blue-500/20 rounded-lg text-white">
+                  <p className="text-blue-400">📱 Robust App</p>
+                  <p className="text-[8px] font-normal text-gray-500">(Gatilho Event / Webhook)</p>
+                </div>
+                <div className="text-gray-600 font-extrabold text-xs animate-pulse">────────▶</div>
+                <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-white relative">
+                  <div className="w-1.5 h-1.5 rounded-full bg-amber-400 absolute top-1 right-1 animate-ping" />
+                  <p className="text-amber-400 animate-pulse">⚙️ n8n Webhook</p>
+                  <p className="text-[8px] font-normal text-gray-500">(Tratador & Roteador)</p>
+                </div>
+                <div className="text-gray-600 font-extrabold text-xs animate-pulse">────────▶</div>
+                <div className="p-2 bg-emerald-600/10 border border-emerald-500/20 rounded-lg text-white">
+                  <p className="text-emerald-400">⚡ Supabase DB</p>
+                  <p className="text-[8px] font-normal text-gray-500">(Tabelas de Clientes)</p>
+                </div>
+              </div>
+            </div>
+
+            {/* TERMINAL LOG DISPLAY FOR CONNECTIVITY */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[10px] text-gray-500 uppercase px-1">
+                <span>Terminal de Telemetria Integrada</span>
+                <button
+                  type="button"
+                  onClick={() => setSimulatedTerminalLogs([`[${new Date().toLocaleTimeString("pt-BR")}] 💻 [Terminal] Logs de rede limpos pelo operador.`])}
+                  className="hover:text-white transition-colors cursor-pointer hover:underline"
+                >
+                  Limpar Monitor
+                </button>
+              </div>
+              <div className="bg-[#03070E] rounded-xl border border-gray-800 p-3.5 space-y-1.5 flex-1 overflow-y-auto max-h-[190px] min-h-[140px] text-[11px] font-mono leading-relaxed select-all">
+                {simulatedTerminalLogs.map((logStr, idx) => {
+                  let textClass = "text-gray-400";
+                  if (logStr.includes("🚨") || logStr.includes("ALERTA")) textClass = "text-red-400 font-bold";
+                  else if (logStr.includes("✅") || logStr.includes("Sucesso")) textClass = "text-emerald-400 font-bold";
+                  else if (logStr.includes("⚡") || logStr.includes("GATILHO")) textClass = "text-amber-400";
+                  else if (logStr.includes("💾") || logStr.includes("Query")) textClass = "text-blue-400 font-semibold";
+                  return (
+                    <p key={idx} className={`${textClass} border-b border-gray-900/50 pb-0.5 last:border-0`}>
+                      {logStr}
                     </p>
-                  </div>
-
-                  <div className="space-y-1 text-gray-300 text-[11px]">
-                    <p>⚡ <strong>Saída Canal n8n:</strong> {syncStatus.n8nMsg}</p>
-                    <p>💾 <strong>Saída Banco Supabase:</strong> {syncStatus.sbMsg}</p>
-                    <p className="text-[10px] text-gray-500 mt-1">🕒 Timestamp de Sincronia: {new Date().toLocaleTimeString("pt-BR")}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-6 text-gray-500">
-                  <Database className="w-8 h-8 text-blue-500 mx-auto opacity-30 mb-2 animate-pulse" />
-                  <p>Aguardando Sincronismo com a Nuvem...</p>
-                  <p className="text-[10px] text-gray-600 mt-1">Pressione o botão para enviar o Dump das tabelas de Logs, DVRs e Regras.</p>
-                </div>
-              )}
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="mt-3 text-[10px] text-gray-400 leading-relaxed">
-              * Obs: Se preenchida uma URL válida do n8n, nossa API base fará um post HTTP POST real contendo o dump de dados para disparo de fluxos.
+            {/* MANUAL MANIFEST ACTIONS */}
+            <div className="pt-3 border-t border-gray-950 mt-3 flex items-center justify-between gap-4">
+              <span className="text-[9px] text-gray-500 leading-snug">
+                * Teste rápido: Também é possível despachar o estado estruturado atual para suas chaves e URLs cadastradas no menu à esquerda pressionando o botão de sincronia direta.
+              </span>
+              <button
+                type="button"
+                onClick={handleSyncN8nSupabase}
+                disabled={isSyncing}
+                className="py-1.5 px-3 bg-gray-850 hover:bg-gray-800 disabled:bg-gray-900 border border-gray-700 text-white rounded font-bold uppercase hover:shadow-lg transition-all cursor-pointer inline-flex items-center gap-1 text-[10px] whitespace-nowrap"
+              >
+                {isSyncing ? (
+                  <>
+                    <RefreshCw className="w-3 h-3 animate-spin text-emerald-400" /> Sincronizando...
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-3 h-3 text-blue-400" /> Forçar Envio Manual
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </section>
@@ -2070,7 +2265,7 @@ export default function App() {
                       onClick={() => {
                         const txt = `Olá, ${billingClient.tradingName}! Segue o lembrete de faturamento mensal do seu plano de monitoramento Robust Vision. Valor: R$ ${billingClient.paymentValue || "149,00"} com vencimento para o Dia ${billingClient.dueDate || "10"} via ${billingClient.paymentMethod || "Pix"}. Chave Pix CNPJ da central já disponível. Agradecemos a confiança em nossa operação de CFTV!`;
                         navigator.clipboard.writeText(txt);
-                        alert("Mensagem copiada para a área de transferência!");
+                        showAppAlert("Mensagem de cobrança personalizada copiada para a área de transferência com sucesso!", "Mensagem Copiada", "success");
                       }}
                       className="py-2.5 bg-gray-900 border border-gray-800 text-white rounded-xl font-bold uppercase hover:bg-gray-800 transition-colors cursor-pointer text-center"
                     >
@@ -2191,10 +2386,12 @@ export default function App() {
 
                   <div className="p-6 space-y-4 font-mono text-xs flex-1">
                     
-                    <div className="bg-[#1C2638]/50 border border-dashed border-[#3B82F6]/30 rounded-xl p-3.5 text-gray-400 leading-relaxed text-[11px]">
-                      <p className="text-[#3B82F6] font-bold text-xs mb-1">🔗 Regras de Conexão Webhook:</p>
-                      Ao preencher os campos abaixo e clicar em <strong className="text-white">Salvar Cliente</strong>, uniremos o payload JSON e faremos uma chamada POST direta para o seu n8n Webhook cadastrado.
-                    </div>
+                    {!isSimplifiedMode && (
+                      <div className="bg-[#1C2638]/50 border border-dashed border-[#3B82F6]/30 rounded-xl p-3.5 text-gray-400 leading-relaxed text-[11px]">
+                        <p className="text-[#3B82F6] font-bold text-xs mb-1">🔗 Regras de Conexão Webhook:</p>
+                        Ao preencher os campos abaixo e clicar em <strong className="text-white">Salvar Cliente</strong>, uniremos o payload JSON e faremos uma chamada POST direta para o seu n8n Webhook cadastrado.
+                      </div>
+                    )}
 
                     <div className="space-y-1">
                       <label className="text-gray-400 text-[10px] uppercase font-bold">Nome do Comércio / Estabelecimento</label>
@@ -2985,6 +3182,212 @@ export default function App() {
           </div>
         )}
 
+        {/* EXPORT STORE (PLAY STORE & APP STORE GUIDE) */}
+        {activeTab === "export_store" && (
+          <div id="export_store_tab" className="space-y-6">
+            {/* HERO BANNER SECTION */}
+            <div className="bg-gradient-to-r from-amber-500/10 via-[#111827] to-[#0E1524] border border-[#1E293B] rounded-2xl p-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+              <div className="space-y-2 relative max-w-4xl">
+                <span className="text-[10px] uppercase font-bold text-amber-400 tracking-widest font-mono">Guia de Conversão Mobile Integrado</span>
+                <h2 className="text-lg font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                  <Smartphone className="w-5 h-5 text-amber-400" /> Como publicar seu Robust Vision nas Lojas App Store e Play Store?
+                </h2>
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  Este painel é um aplicativo web escrito em <strong>React + Vite + Tailwind CSS</strong> de altíssima performance. Ao contrário de frameworks pesados, 
+                  esta estrutura é **100% compatível com o Capacitor (da equipe do Ionic)**, permitindo empacotar toda a interface em código nativo de Android e iOS 
+                  usando o exato mesmo código-fonte, de forma profissional e automatizada.
+                </p>
+              </div>
+            </div>
+
+            {/* QUICK STEPS IN BENTO GRID */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
+              
+              {/* CARD 1 - CAPACITOR CORE */}
+              <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-5 flex flex-col justify-between space-y-4 font-mono">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold uppercase text-[11px] pb-2 border-b border-gray-850">
+                    <span className="p-1.5 bg-amber-500/10 rounded-lg">⚡</span>
+                    <span>1. Instalar o Capacitor</span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    O Capacitor interliga a camada web do React diretamente com as APIs nativas do Android (Java/Kotlin) e iOS (Swift) sem perda do seu incrível desempenho de rede.
+                  </p>
+                </div>
+                <div className="bg-[#090D14] p-3 rounded-xl border border-gray-800/60 space-y-1.5 text-[10px] w-full">
+                  <p className="text-gray-500"># Instale no projeto:</p>
+                  <code className="text-amber-400 block break-all select-all font-mono">npm install @capacitor/core @capacitor/cli</code>
+                  <p className="text-gray-500 mt-2"># Inicialize o app:</p>
+                  <code className="text-amber-400 block break-all select-all font-mono">npx cap init "Robust Vision" "com.robustvision.app" --web-dir=dist</code>
+                </div>
+              </div>
+
+              {/* CARD 2 - PLATFORMS */}
+              <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-5 flex flex-col justify-between space-y-4 font-mono">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-[#3B82F6] font-bold uppercase text-[11px] pb-2 border-b border-gray-850">
+                    <span className="p-1.5 bg-blue-500/10 rounded-lg">⚙️</span>
+                    <span>2. Adicionar Plataformas</span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Gere os projetos nativos do Android Studio e Xcode automaticamente a partir dos arquivos estáticos compilados do seu build.
+                  </p>
+                </div>
+                <div className="bg-[#090D14] p-3 rounded-xl border border-gray-800/60 space-y-1.5 text-[10px] w-full">
+                  <p className="text-gray-500"># Adicione os pacotes nativos:</p>
+                  <code className="text-[#3B82F6] block break-all select-all font-mono">npm install @capacitor/android @capacitor/ios</code>
+                  <p className="text-gray-500 mt-2"># Integre os diretórios nativos:</p>
+                  <code className="text-[#3B82F6] block break-all select-all font-mono">npx cap add android && npx cap add ios</code>
+                </div>
+              </div>
+
+              {/* CARD 3 - DEPLOY SYNC */}
+              <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-5 flex flex-col justify-between space-y-4 font-mono">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-[#10B981] font-bold uppercase text-[11px] pb-2 border-b border-gray-850">
+                    <span className="p-1.5 bg-emerald-500/10 rounded-lg">📁</span>
+                    <span>3. Compilar e Sincronizar</span>
+                  </div>
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    Sempre que fizer alterações no seu código React original, basta compilar o projeto web e sincronizar os assets com os apps nativos.
+                  </p>
+                </div>
+                <div className="bg-[#090D14] p-3 rounded-xl border border-gray-800/60 space-y-1.5 text-[10px] w-full">
+                  <p className="text-gray-500"># Compila o painel web:</p>
+                  <code className="text-[#10B981] block break-all select-all font-mono">npm run build</code>
+                  <p className="text-gray-500 mt-2"># Sincroniza com as pastas nativas:</p>
+                  <code className="text-[#10B981] block break-all select-all font-mono">npx cap sync</code>
+                </div>
+              </div>
+
+            </div>
+
+            {/* DETAILED GUIDES GRID */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-2">
+              
+              {/* GOOGLE PLAY STORE DETAIL GUIDE */}
+              <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-5 space-y-4 font-sans border-gray-850">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-800">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400 font-mono">PASSO A PASSO #01</span>
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono">📱 Publicar no Google Play (Android)</h3>
+                  </div>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-[#10B981] border border-emerald-500/30 font-mono">NATIVO COMPLETO</span>
+                </div>
+
+                <div className="text-xs text-gray-300 space-y-3.5 leading-relaxed">
+                  <p>
+                    Para enviar o Robust Vision ao Google Play Console de forma profissional e descomplicada, siga os passos operacionais abaixo:
+                  </p>
+                  
+                  <ol className="list-decimal list-inside space-y-2.5 text-gray-400 font-mono text-[11px] bg-[#090D14] p-4 rounded-xl border border-gray-900 leading-relaxed">
+                    <li>
+                      <strong className="text-white">Instale o Android Studio:</strong> Garanta o SDK do Android 34 compilado na sua máquina.
+                    </li>
+                    <li>
+                      <strong className="text-white">Abra o projeto nativo:</strong> Execute o comando <code className="text-amber-400 bg-black/40 px-1 rounded font-bold">npx cap open android</code> para abrir a IDE do Android Studio com seu projeto gerado.
+                    </li>
+                    <li>
+                      <strong className="text-white">Configure o Ícone do App:</strong> No Android Studio, clique com o botão direito na pasta <code className="text-gray-300">app</code> → <code className="text-gray-300">New</code> → <code className="text-gray-300">Image Asset</code>. Escolha a logo da Robust Vision para gerar todas as densidades (hdpi, xxhdpi, etc) automaticamente.
+                    </li>
+                    <li>
+                      <strong className="text-white">Adicione as permissões no AndroidManifest.xml:</strong> Como nosso sistema de segurança opera com DVRs reais e fotos, adicione permissão de Câmera e Notificações de Alarme.
+                    </li>
+                    <li>
+                      <strong className="text-white">Gere o arquivo assinado (.AAB):</strong> No menu superior, vá em <code className="text-gray-300">Build</code> → <code className="text-gray-300">Generate Signed Bundle / APK</code> → escolha <code className="text-gray-300">Android App Bundle</code>. Crie sua assinatura digital (keystore) e salve com segurança!
+                    </li>
+                    <li>
+                      <strong className="text-white">Envie para o Google Play Console:</strong> Crie uma conta de desenvolvedor do Google (taxa única de $25 USD) e envie seu arquivo <code className="text-[#10B981]">app-release.aab</code> na área de Produção ou Teste Fechado.
+                    </li>
+                  </ol>
+
+                  <div className="p-3 bg-blue-600/10 border border-blue-500/10 rounded-xl text-[11px] flex gap-2">
+                    <span className="text-[#3B82F6] font-bold shrink-0 font-mono">💡 NOTA DE CFTV:</span>
+                    <p className="text-gray-300 font-mono leading-relaxed">
+                      Por rodar em protocolo HTTP/HTTPS direto na Webview nativa protegida, o Stream de feeds de DVRs e conexões do seu webhook n8n/Supabase funcionam perfeitamente sem necessidade de servidores externos!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* APPLE APP STORE DETAIL GUIDE */}
+              <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-5 space-y-4 font-sans border-gray-850">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-800">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400 font-mono">PASSO A PASSO #02</span>
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono">🍏 Publicar na App Store (Apple iOS)</h3>
+                  </div>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 font-mono">REQUISITO MACOS</span>
+                </div>
+
+                <div className="text-xs text-gray-300 space-y-3.5 leading-relaxed">
+                  <p>
+                    Para o ecossistema iOS da Apple, a portabilidade através do Xcode com Capacitor mantém toda a elegância visual do Tailwind CSS intocada:
+                  </p>
+
+                  <ol className="list-decimal list-inside space-y-2.5 text-gray-400 font-mono text-[11px] bg-[#090D14] p-4 rounded-xl border border-gray-900 leading-relaxed font-mono">
+                    <li>
+                      <strong className="text-white">Requisito de Sistema:</strong> Diferente do Android, a compilação do iOS exige obrigatoriamente um computador macOS (Mac Mini, Macbook, iMac) rodando o Xcode oficial.
+                    </li>
+                    <li>
+                      <strong className="text-white">Abra o projeto nativo:</strong> Execute o comando <code className="text-blue-400 bg-black/40 px-1 rounded font-bold">npx cap open ios</code>. O Xcode abrirá imediatamente o projeto autogerado do iOS.
+                    </li>
+                    <li>
+                      <strong className="text-white">Configure a Assinatura (Signing):</strong> Nas propriedades do projeto no Xcode, configure o seu <code className="text-gray-300">Signing & Capabilities</code> associando sua conta Apple Developer ($99 USD anuais).
+                    </li>
+                    <li>
+                      <strong className="text-white">Defina os Ícones (AppIcon):</strong> Abra o arquivo <code className="text-gray-300">Assets.xcassets</code> e arraste a imagem oficial da Robust Vision para preencher todos os formatos de retina.
+                    </li>
+                    <li>
+                      <strong className="text-white">Edite o Info.plist:</strong> Para que a Apple aprove o app de segurança, insira as justificativas de privacidade em strings do Info.plist para uso do CFTV (Camera Usage Description).
+                    </li>
+                    <li>
+                      <strong className="text-white">Archive e Upload:</strong> Selecione no Xcode o dispositivo genérico <code className="text-gray-300">Any iOS Device</code>, vá em <code className="text-gray-300">Product</code> → <code className="text-gray-350 font-mono">Archive</code>, clique em <code className="text-gray-300 font-mono">Distribute App</code> e envie diretamente à nuvem Apple Connect!
+                    </li>
+                  </ol>
+
+                  <div className="p-3 bg-purple-600/10 border border-purple-500/10 rounded-xl text-[11px] flex gap-2">
+                    <span className="text-purple-400 font-bold shrink-0 font-mono">📱 WEB RESPONSIVE:</span>
+                    <p className="text-gray-300 font-mono leading-relaxed">
+                      A visualização em formato de iFrame será automaticamente desativada no aplicativo móvel nativo, garantindo que o seu cliente veja o painel principal em modo 100% tela cheia nativa extremamente fluido.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* INTERACTIVE PLAYGROUND SHELL */}
+            <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-5 font-mono text-xs space-y-3">
+              <h4 className="text-white font-bold uppercase text-xs">🛠️ Comandos de Deploy Rápido para seu Prompt de Comando</h4>
+              <p className="text-gray-400 text-[11px]">Pressione o botão para copiar e disparar no seu terminal local do projeto sempre que atualizar os dados do painel:</p>
+              
+              <div className="bg-[#03070E] p-4 rounded-xl border border-gray-800 space-y-3">
+                <div className="flex items-center justify-between border-b border-gray-900 pb-2">
+                  <span className="text-[10px] text-gray-500 font-bold">TERMINAL DE CONVERSÃO EXECUTÁVEL COMPOSTO</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText("npm run build && npx cap sync && npx cap open android");
+                      showAppAlert("Comando de compilação sincronizado copiado! Cole no seu prompt do Node local para disparar as ferramentas automáticas no seu computador.", "Copiado para Área de Transferência", "success");
+                    }}
+                    className="hover:text-amber-400 text-amber-500 transition-colors text-[10px] uppercase font-bold underline cursor-pointer"
+                  >
+                    Copiar Linha de Comando Inteira
+                  </button>
+                </div>
+                <div className="text-emerald-400 text-[11px] select-all leading-relaxed whitespace-pre font-mono">
+                  <div>npm run build <span className="text-gray-600"># Compila o Front-End React em arquivos estáticos (dist/)</span></div>
+                  <div>npx cap sync   <span className="text-gray-600"># Transfere e atualiza os binários estáticos para o Android e iOS nativo</span></div>
+                  <div>npx cap open android <span className="text-gray-600 font-bold"># Dispara o Android Studio pronto para gerar a versão assinado Play Store (.AAB)</span></div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
         {/* LOG HISTORY LISTING */}
         <section id="logs_history_section" className="bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden">
           <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -3130,6 +3533,48 @@ export default function App() {
           <p className="text-[10px] text-gray-600 mt-2">© 2026 Robust Vision Inc. Todos os Direitos Reservados.</p>
         </div>
       </footer>
+
+      {/* Modern Non-Blocking App Alert Overlay */}
+      {appAlert && appAlert.isOpen && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm">
+          <div className="bg-[#111827] border border-gray-805 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 font-sans border-gray-800">
+            <div className="flex items-start gap-3.5">
+              <div className={`p-3 rounded-full shrink-0 ${
+                appAlert.type === "success" 
+                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20" 
+                  : appAlert.type === "warn"
+                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"
+                    : "bg-blue-500/15 text-blue-400 border border-blue-500/20"
+              }`}>
+                {appAlert.type === "success" ? (
+                  <CheckCircle className="w-6 h-6" />
+                ) : appAlert.type === "warn" ? (
+                  <AlertTriangle className="w-6 h-6 animate-pulse" />
+                ) : (
+                  <AlertCircle className="w-6 h-6" />
+                )}
+              </div>
+              <div className="space-y-1.5 flex-1">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono">
+                  {appAlert.title}
+                </h3>
+                <p className="text-[11px] text-gray-300 leading-relaxed font-mono whitespace-pre-line">
+                  {appAlert.message}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setAppAlert(null)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-mono font-bold text-xs uppercase transition-all tracking-wider cursor-pointer shadow-lg active:scale-95"
+              >
+                Entendido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
