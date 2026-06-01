@@ -28,7 +28,11 @@ import {
   RefreshCw,
   Sliders,
   Database,
-  Cpu
+  Cpu,
+  DollarSign,
+  Coins,
+  FileText,
+  Check
 } from "lucide-react";
 import { CameraFeed, VerificationLog, WhatsAppSchedule, DVRAccessDevice, SystemStats, SubscriptionPlan, SupabaseN8nConfig, NDSClient, IntelbrasDVR } from "./types";
 import { INITIAL_FEEDS, INITIAL_LOGS, INITIAL_SCHEDULES, INITIAL_DVR_DEVICES, SUBSCRIPTION_PLANS, robustVisionLogo } from "./data";
@@ -173,6 +177,14 @@ export default function App() {
     ];
   });
 
+  // --- CLIENT PAYMENT FIELDS ---
+  const [clientPlanId, setClientPlanId] = useState("plan-silver");
+  const [clientPaymentStatus, setClientPaymentStatus] = useState<"Pago" | "Pendente" | "Atrasado">("Pendente");
+  const [clientPaymentValue, setClientPaymentValue] = useState("299,00");
+  const [clientPaymentMethod, setClientPaymentMethod] = useState<"Pix" | "Boleto" | "Cartão" | "Dinheiro">("Pix");
+  const [clientDueDate, setClientDueDate] = useState("10");
+  const [adminSubTab, setAdminSubTab] = useState<"cadastro" | "financeiro">("cadastro");
+
   const [registeredClients, setRegisteredClients] = useState<NDSClient[]>(() => {
     const saved = localStorage.getItem("rv_registered_clients");
     if (saved) return JSON.parse(saved);
@@ -183,7 +195,13 @@ export default function App() {
         whatsapp: "+5511999998888",
         openTime: "07:00",
         closeTime: "22:00",
-        createdAt: new Date(Date.now() - 86400000 * 3).toISOString()
+        createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+        planId: "plan-bronze",
+        planName: "Bronze Monitor",
+        paymentStatus: "Pago",
+        paymentValue: "149,00",
+        paymentMethod: "Pix",
+        dueDate: "10"
       },
       {
         id: "client-2",
@@ -191,12 +209,19 @@ export default function App() {
         whatsapp: "+5511987654321",
         openTime: "08:00",
         closeTime: "18:00",
-        createdAt: new Date(Date.now() - 86400000).toISOString()
+        createdAt: new Date(Date.now() - 86400000).toISOString(),
+        planId: "plan-silver",
+        planName: "Robust Choice (Prata)",
+        paymentStatus: "Atrasado",
+        paymentValue: "299,00",
+        paymentMethod: "Boleto",
+        dueDate: "05"
       }
     ];
   });
 
   const [isSavingClient, setIsSavingClient] = useState(false);
+  const [billingClient, setBillingClient] = useState<NDSClient | null>(null);
   const [clientToast, setClientToast] = useState<{
     success: boolean;
     message: string;
@@ -695,11 +720,20 @@ export default function App() {
       }
     }
 
+    const selectedPlanObj = SUBSCRIPTION_PLANS.find(p => p.id === clientPlanId);
+    const planNameName = selectedPlanObj ? selectedPlanObj.name : "Personalizado";
+
     const payload = {
       tradingName: clientTradingName.trim(),
       whatsapp: formattedPhone,
       openTime: clientOpenTime,
       closeTime: clientCloseTime,
+      planId: clientPlanId,
+      planName: planNameName,
+      paymentStatus: clientPaymentStatus,
+      paymentValue: clientPaymentValue.trim(),
+      paymentMethod: clientPaymentMethod,
+      dueDate: clientDueDate,
       timestamp: new Date().toISOString()
     };
 
@@ -715,7 +749,13 @@ export default function App() {
       whatsapp: payload.whatsapp,
       openTime: payload.openTime,
       closeTime: payload.closeTime,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      planId: payload.planId,
+      planName: payload.planName,
+      paymentStatus: payload.paymentStatus as "Pago" | "Pendente" | "Atrasado",
+      paymentValue: payload.paymentValue,
+      paymentMethod: payload.paymentMethod as "Pix" | "Boleto" | "Cartão" | "Dinheiro",
+      dueDate: payload.dueDate
     };
 
     setRegisteredClients(prev => [newClient, ...prev]);
@@ -1981,6 +2021,105 @@ export default function App() {
 
         {activeTab === "admin_clients" && (
           <div id="admin_tab_content" className="space-y-6">
+            
+            {/* INLINE MODAL DIALOG FOR CUSTOM WHATSAPP BILLING */}
+            {billingClient && (
+              <div 
+                id="billing_modal_overlay" 
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm transition-all duration-300"
+              >
+                <div className="bg-[#111827] border border-emerald-500/40 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative font-mono text-xs">
+                  <button 
+                    type="button"
+                    onClick={() => setBillingClient(null)} 
+                    className="absolute top-4 right-4 text-gray-500 hover:text-white p-1 hover:bg-gray-800 rounded transition-colors cursor-pointer text-sm"
+                  >
+                    ✕
+                  </button>
+                  <div className="flex items-center gap-2.5 text-emerald-400 font-bold border-b border-[#1E293B] pb-3">
+                    <DollarSign className="w-5 h-5 animate-pulse" />
+                    <span className="text-sm uppercase tracking-wider">Disparo de Cobrança WhatsApp (NDS)</span>
+                  </div>
+
+                  <div className="space-y-3.5">
+                    <p className="text-gray-300 text-xs">
+                      Gerando template de pagamento customizado para o cliente:
+                    </p>
+                    <div className="p-3 bg-[#090D14] rounded-xl border border-gray-800/80 space-y-1 text-gray-400">
+                      <p>🏢 <strong>Estabelecimento:</strong> <span className="text-white">{billingClient.tradingName}</span></p>
+                      <p>📱 <strong>WhatsApp:</strong> <span className="text-white">{billingClient.whatsapp}</span></p>
+                      <p>💰 <strong>Mensalidade:</strong> <span className="text-emerald-400 font-bold">R$ {billingClient.paymentValue || "149,00"}</span></p>
+                      <p>💳 <strong>Método:</strong> <span className="text-[#3B82F6] font-bold">{billingClient.paymentMethod || "Pix"}</span></p>
+                      <p>📆 <strong>Dia de Faturamento:</strong> <span className="text-white">Dia {billingClient.dueDate || "10"}</span></p>
+                    </div>
+
+                    <div className="space-y-1 pb-1">
+                      <p className="text-[#10B981] font-bold">Mensagem customizada a enviar:</p>
+                      <textarea
+                        readOnly
+                        rows={4}
+                        className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg p-3 text-[11px] focus:outline-none select-all font-mono leading-relaxed resize-none text-left"
+                        value={`Olá, ${billingClient.tradingName}! Segue o lembrete de faturamento mensal do seu plano de monitoramento Robust Vision. Valor: R$ ${billingClient.paymentValue || "149,00"} com vencimento para o Dia ${billingClient.dueDate || "10"} via ${billingClient.paymentMethod || "Pix"}. Chave Pix CNPJ da central já disponível. Agradecemos a confiança em nossa operação de CFTV!`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const txt = `Olá, ${billingClient.tradingName}! Segue o lembrete de faturamento mensal do seu plano de monitoramento Robust Vision. Valor: R$ ${billingClient.paymentValue || "149,00"} com vencimento para o Dia ${billingClient.dueDate || "10"} via ${billingClient.paymentMethod || "Pix"}. Chave Pix CNPJ da central já disponível. Agradecemos a confiança em nossa operação de CFTV!`;
+                        navigator.clipboard.writeText(txt);
+                        alert("Mensagem copiada para a área de transferência!");
+                      }}
+                      className="py-2.5 bg-gray-900 border border-gray-800 text-white rounded-xl font-bold uppercase hover:bg-gray-800 transition-colors cursor-pointer text-center"
+                    >
+                      Copiar Texto
+                    </button>
+                    <a
+                      href={`https://api.whatsapp.com/send?phone=${encodeURIComponent(billingClient.whatsapp)}&text=${encodeURIComponent(
+                        `Olá, ${billingClient.tradingName}! Segue o lembrete de faturamento mensal do seu plano de monitoramento Robust Vision. Valor: R$ ${billingClient.paymentValue || "149,00"} com vencimento para o Dia ${billingClient.dueDate || "10"} via ${billingClient.paymentMethod || "Pix"}. Chave Pix CNPJ da central já disponível. Agradecemos a confiança em nossa operação de CFTV!`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-black text-center font-bold uppercase rounded-xl transition-all cursor-pointer shadow-lg inline-flex items-center justify-center gap-1.5"
+                    >
+                      <Smartphone className="w-4 h-4 text-black" />
+                      Disparar Whats
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SUB-TABS SELECTOR FOR CLIENTS & FINANCEIRO */}
+            <div className="flex bg-[#0E1524] p-1 rounded-xl border border-[#1E293B] gap-1 font-mono text-xs max-w-md">
+              <button
+                type="button"
+                onClick={() => setAdminSubTab("cadastro")}
+                className={`flex-1 py-2 px-3 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-2 cursor-pointer ${
+                  adminSubTab === "cadastro"
+                    ? "bg-blue-500/15 text-blue-400 border border-blue-500/20 font-extrabold"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>Cadastro & Webhook</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminSubTab("financeiro")}
+                className={`flex-1 py-2 px-3 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-2 cursor-pointer ${
+                  adminSubTab === "financeiro"
+                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-extrabold"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                <DollarSign className="w-3.5 h-3.5" />
+                <span>Painel Financeiro & Pagamentos</span>
+              </button>
+            </div>
+
             {/* TOAST SUCCESS BANNER */}
             {clientToast && (
               <div 
@@ -2007,6 +2146,8 @@ export default function App() {
                       <p>🏢 <strong>Mercado/Comércio:</strong> <span className="text-white">{clientToast.payload?.tradingName}</span></p>
                       <p>📱 <strong>WhatsApp:</strong> <span className="text-white">{clientToast.payload?.whatsapp}</span></p>
                       <p>⏰ <strong>Janela Comercial:</strong> <span className="text-white">{clientToast.payload?.openTime} às {clientToast.payload?.closeTime}</span></p>
+                      <p>📦 <strong>Plano e Faturamento:</strong> <span className="text-emerald-400 font-bold">{clientToast.payload?.planName || "Nenhum"} (R$ {clientToast.payload?.paymentValue || "0,00"})</span></p>
+                      <p>💳 <strong>Modo & Vencimento:</strong> <span className="text-[#3B82F6] font-bold">{clientToast.payload?.paymentMethod || "Pix"} - Vencimento Dia {clientToast.payload?.dueDate || "10"} ({clientToast.payload?.paymentStatus || "Pendente"})</span></p>
                     </div>
                   </div>
                 </div>
@@ -2026,182 +2167,482 @@ export default function App() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              
-              {/* REGISTER NEW MERCHANT CLIENT FORM */}
-              <div className="lg:col-span-6 bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden flex flex-col shadow-xl">
-                <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-400">
-                      <SlidersHorizontal className="w-4 h-4" />
+            {adminSubTab === "cadastro" ? (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                {/* REGISTER NEW MERCHANT CLIENT FORM */}
+                <div className="lg:col-span-6 bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden flex flex-col shadow-xl">
+                  <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg text-blue-400">
+                        <SlidersHorizontal className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-white font-mono">
+                          Configuração de Integração de Clientes NDS
+                        </h3>
+                        <p className="text-[10px] text-gray-500 mt-0.5 font-mono">Cadastre comércios e defina canais ativos n8n</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-white font-mono">
-                        Configuração de Integração de Clientes NDS
-                      </h3>
-                      <p className="text-[10px] text-gray-500 mt-0.5 font-mono">Cadastre comércios e defina canais ativos n8n</p>
-                    </div>
+                    <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 px-2.5 py-1 rounded border border-blue-500/20 uppercase font-bold">
+                      WEBHOOK DISPATCH
+                    </span>
                   </div>
-                  <span className="text-[10px] font-mono bg-blue-500/10 text-blue-400 px-2.5 py-1 rounded border border-blue-500/20 uppercase font-bold">
-                    WEBHOOK DISPATCH
-                  </span>
+
+                  <div className="p-6 space-y-4 font-mono text-xs flex-1">
+                    
+                    <div className="bg-[#1C2638]/50 border border-dashed border-[#3B82F6]/30 rounded-xl p-3.5 text-gray-400 leading-relaxed text-[11px]">
+                      <p className="text-[#3B82F6] font-bold text-xs mb-1">🔗 Regras de Conexão Webhook:</p>
+                      Ao preencher os campos abaixo e clicar em <strong className="text-white">Salvar Cliente</strong>, uniremos o payload JSON e faremos uma chamada POST direta para o seu n8n Webhook cadastrado.
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-gray-400 text-[10px] uppercase font-bold">Nome do Comércio / Estabelecimento</label>
+                      <input 
+                        type="text" 
+                        placeholder="Ex: Farmácia Popular Central"
+                        value={clientTradingName}
+                        onChange={(e) => setClientTradingName(e.target.value)}
+                        className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-gray-400 text-[10px] uppercase font-bold">Telefone WhatsApp Corporativo</label>
+                      <input 
+                        type="text" 
+                        placeholder="Ex: +5511999998888"
+                        value={clientWhatsApp}
+                        onChange={(e) => setClientWhatsApp(e.target.value)}
+                        className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-gray-400 text-[10px] uppercase font-bold">Hora de Abertura</label>
+                        <input 
+                          type="time" 
+                          value={clientOpenTime}
+                          onChange={(e) => setClientOpenTime(e.target.value)}
+                          className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-gray-400 text-[10px] uppercase font-bold">Hora de Fechamento</label>
+                        <input 
+                          type="time" 
+                          value={clientCloseTime}
+                          onChange={(e) => setClientCloseTime(e.target.value)}
+                          className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    {/* SEÇÃO DE PAGAMENTO E ASSINATURA */}
+                    <div className="pt-3 border-t border-[#1E293B] space-y-3.5">
+                      <p className="text-emerald-400 text-[10px] uppercase font-bold flex items-center gap-1.5 font-mono">
+                        <DollarSign className="w-3.5 h-3.5" /> Faturamento & Plano de Assinatura
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-gray-400 text-[10px] uppercase font-bold">Plano de Entrada</label>
+                          <select 
+                            value={clientPlanId}
+                            onChange={(e) => {
+                              setClientPlanId(e.target.value);
+                              const p = SUBSCRIPTION_PLANS.find(plan => plan.id === e.target.value);
+                              if (p) {
+                                setClientPaymentValue(p.price.replace("R$ ", "") + ",00");
+                              }
+                            }}
+                            className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3 py-2.5 focus:outline-[#10B981] text-xs font-mono"
+                          >
+                            {SUBSCRIPTION_PLANS.map(plan => (
+                              <option key={plan.id} value={plan.id}>{plan.name} ({plan.price}/{plan.period})</option>
+                            ))}
+                            <option value="custom">Personalizado / Customizado</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-gray-400 text-[10px] uppercase font-bold">Valor Mensal (R$)</label>
+                          <input 
+                            type="text" 
+                            placeholder="Ex: 299,00"
+                            value={clientPaymentValue}
+                            onChange={(e) => setClientPaymentValue(e.target.value)}
+                            className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-gray-400 text-[10px] uppercase font-bold block mb-1">Dia Vecto.</label>
+                          <select 
+                            value={clientDueDate}
+                            onChange={(e) => setClientDueDate(e.target.value)}
+                            className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-2 py-2 focus:outline-[#10B981] text-xs font-mono"
+                          >
+                            <option value="05">Dia 05</option>
+                            <option value="10">Dia 10</option>
+                            <option value="15">Dia 15</option>
+                            <option value="20">Dia 20</option>
+                            <option value="25">Dia 25</option>
+                            <option value="30">Dia 30</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-gray-400 text-[10px] uppercase font-bold block mb-1">Forma Pgto.</label>
+                          <select 
+                            value={clientPaymentMethod}
+                            onChange={(e) => setClientPaymentMethod(e.target.value as any)}
+                            className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-2 py-2 focus:outline-[#10B981] text-xs font-mono"
+                          >
+                            <option value="Pix">Pix</option>
+                            <option value="Boleto">Boleto</option>
+                            <option value="Cartão">Cartão</option>
+                            <option value="Dinheiro">Dinheiro</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-gray-400 text-[10px] uppercase font-bold block mb-1">Status Inst.</label>
+                          <select 
+                            value={clientPaymentStatus}
+                            onChange={(e) => setClientPaymentStatus(e.target.value as any)}
+                            className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-2 py-2 focus:outline-[#10B981] text-xs font-mono"
+                          >
+                            <option value="Pago">Pago</option>
+                            <option value="Pendente">Pendente</option>
+                            <option value="Atrasado">Atrasado</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 pt-2 border-t border-gray-800">
+                      <label className="text-blue-400 text-[10px] uppercase font-bold flex items-center gap-1.5 font-mono">
+                        <Network className="w-3.5 h-3.5" /> URL Webhook do n8n / Endpoint
+                      </label>
+                      <input 
+                        type="text" 
+                        placeholder="Ex: https://n8n.cloud"
+                        value={clientWebhookUrl}
+                        onChange={(e) => setClientWebhookUrl(e.target.value)}
+                        className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold font-mono select-all text-xs"
+                      />
+                      <p className="text-[10px] text-gray-500 italic">
+                        * O formulário enviará os dados via chamada POST direto para esta URL.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSaveClient()}
+                      disabled={isSavingClient}
+                      className="w-full py-3 bg-gradient-to-r from-blue-600 to-[#10B981] hover:from-blue-700 hover:to-[#0EA572] disabled:from-gray-700 disabled:to-gray-800 text-white rounded-xl font-bold uppercase text-xs transition-all cursor-pointer shadow-lg active:scale-[0.99] flex items-center justify-center gap-2 mt-4"
+                    >
+                      {isSavingClient ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" /> Postando dados no n8n...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" /> Salvar Cliente (Disparar Webhook)
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="p-6 space-y-4 font-mono text-xs flex-1">
-                  
-                  <div className="bg-[#1C2638]/50 border border-dashed border-[#3B82F6]/30 rounded-xl p-3.5 text-gray-400 leading-relaxed text-[11px]">
-                    <p className="text-[#3B82F6] font-bold text-xs mb-1">🔗 Regras de Conexão Webhook:</p>
-                    Ao preencher os campos abaixo e clicar em <strong className="text-white">Salvar Cliente</strong>, uniremos o payload JSON e faremos uma chamada POST direta para o seu n8n Webhook cadastrado.
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-gray-400 text-[10px] uppercase font-bold">Nome do Comércio / Estabelecimento</label>
-                    <input 
-                      type="text" 
-                      placeholder="Ex: Farmácia Popular Central"
-                      value={clientTradingName}
-                      onChange={(e) => setClientTradingName(e.target.value)}
-                      className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-gray-400 text-[10px] uppercase font-bold">Telefone WhatsApp Corporativo</label>
-                    <input 
-                      type="text" 
-                      placeholder="Ex: +5511999998888"
-                      value={clientWhatsApp}
-                      onChange={(e) => setClientWhatsApp(e.target.value)}
-                      className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-gray-400 text-[10px] uppercase font-bold">Hora de Abertura</label>
-                      <input 
-                        type="time" 
-                        value={clientOpenTime}
-                        onChange={(e) => setClientOpenTime(e.target.value)}
-                        className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-                      />
+                {/* ACTIVE MERCHANT LISTING */}
+                <div className="lg:col-span-6 bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden flex flex-col shadow-xl">
+                  <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-1.5 bg-[#10B981]/10 border border-[#10B981]/25 rounded-lg text-[#10B981]">
+                        <UserCheck className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-[#10B981] font-mono">
+                          Comércios Monitorados Ativos (NDS)
+                        </h3>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Gestão de estabelecimentos ativos</p>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-gray-400 text-[10px] uppercase font-bold">Hora de Fechamento</label>
-                      <input 
-                        type="time" 
-                        value={clientCloseTime}
-                        onChange={(e) => setClientCloseTime(e.target.value)}
-                        className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xs"
-                      />
-                    </div>
+                    <span className="text-[10px] font-mono bg-[#10B981]/15 text-[#10B981] px-2 py-0.5 rounded border border-[#10B981]/20">
+                      {registeredClients.length} Cadastrados
+                    </span>
                   </div>
 
-                  <div className="space-y-1.5 pt-2 border-t border-gray-800">
-                    <label className="text-blue-400 text-[10px] uppercase font-bold flex items-center gap-1.5">
-                      <Network className="w-3.5 h-3.5" /> URL Webhook do n8n / Endpoint
-                    </label>
-                    <input 
-                      type="text" 
-                      placeholder="Ex: https://n8n.cloud"
-                      value={clientWebhookUrl}
-                      onChange={(e) => setClientWebhookUrl(e.target.value)}
-                      className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold select-all text-xs"
-                    />
-                    <p className="text-[10px] text-gray-500 italic">
-                      * O formulário enviará os dados via chamada POST direto para esta URL.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSaveClient()}
-                    disabled={isSavingClient}
-                    className="w-full py-3 bg-gradient-to-r from-blue-600 to-[#10B981] hover:from-blue-700 hover:to-[#0EA572] disabled:from-gray-700 disabled:to-gray-800 text-white rounded-xl font-bold uppercase text-xs transition-all cursor-pointer shadow-lg active:scale-[0.99] flex items-center justify-center gap-2 mt-4"
-                  >
-                    {isSavingClient ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" /> Postando dados no n8n...
-                      </>
+                  <div className="p-6 space-y-4 font-mono text-xs flex-1">
+                    
+                    {registeredClients.length === 0 ? (
+                      <div className="text-center py-12 text-gray-500">
+                        <UserCheck className="w-12 h-12 mx-auto text-gray-600 opacity-30 mb-2 animate-pulse" />
+                        <p>Nenhum comerciante cadastrado nesta central.</p>
+                      </div>
                     ) : (
-                      <>
-                        <Send className="w-4 h-4" /> Salvar Cliente (Disparar Webhook)
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+                      <div className="space-y-3 overflow-y-auto max-h-[420px] pr-1">
+                        {registeredClients.map((client) => {
+                          const statusColor = 
+                            client.paymentStatus === "Pago" 
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
+                              : client.paymentStatus === "Pendente" 
+                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" 
+                                : "bg-red-500/10 text-red-400 border border-red-500/20";
+                          return (
+                            <div 
+                              key={client.id}
+                              className="p-3.5 bg-[#090D14] border border-gray-800 rounded-xl space-y-2 relative"
+                            >
+                              <div className="flex items-start justify-between min-w-0 pr-6">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h4 className="font-bold text-white text-[13px]">{client.tradingName}</h4>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        // Simple cyclic toggle
+                                        const nextStatus = client.paymentStatus === "Pago" ? "Pendente" : client.paymentStatus === "Pendente" ? "Atrasado" : "Pago";
+                                        setRegisteredClients(prev => prev.map(c => c.id === client.id ? { ...c, paymentStatus: nextStatus } : c));
+                                      }}
+                                      className={`text-[9px] font-bold px-2 py-0.5 rounded cursor-pointer transition-colors ${statusColor}`}
+                                      title="Clique para alterar status de pagamento"
+                                    >
+                                      {client.paymentStatus || "Pendente"}
+                                    </button>
+                                  </div>
+                                  <p className="text-[9px] text-gray-500 pt-0.5">Registrado: {new Date(client.createdAt).toLocaleDateString("pt-BR")}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteClient(client.id)}
+                                  className="absolute top-3.5 right-3.5 p-1 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
+                                  title="Remover Comércio"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
 
-              {/* ACTIVE MERCHANT LISTING */}
-              <div className="lg:col-span-6 bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden flex flex-col shadow-xl">
-                <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-1.5 bg-[#10B981]/10 border border-[#10B981]/25 rounded-lg text-[#10B981]">
-                      <UserCheck className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#10B981] font-mono">
-                        Comércios Monitorados Ativos (NDS)
-                      </h3>
-                      <p className="text-[10px] text-gray-500 mt-0.5">Gestão de estabelecimentos ativos</p>
+                              <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-gray-800">
+                                <div>
+                                  <p className="text-gray-500 text-[9px] uppercase">WhatsApp</p>
+                                  <p className="text-blue-400 font-bold">{client.whatsapp}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-500 text-[9px] uppercase">Monitoramento</p>
+                                  <p className="text-white font-bold font-mono">⏰ {client.openTime} às {client.closeTime}</p>
+                                </div>
+                              </div>
+
+                              {/* PLAN & PAYMENT STRIP */}
+                              <div className="bg-[#0D1525] p-2 rounded-lg border border-gray-850 text-[10px] flex items-center justify-between text-gray-300">
+                                <span className="text-emerald-400 font-bold">{client.planName || "Plano Robusto"}</span>
+                                <div>
+                                  <span className="text-white font-bold">R$ {client.paymentValue || "149,00"}</span>
+                                  <span className="text-gray-500"> / {client.paymentMethod || "Pix"}</span>
+                                  <span className="text-blue-400 font-bold bg-[#3B82F6]/10 px-1.5 py-0.5 rounded ml-2">Dia {client.dueDate || "10"}</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="bg-[#0E1524] p-3.5 rounded-xl border border-gray-800 text-[10px] text-gray-400 leading-relaxed">
+                      💡 <strong>Otimização de rotas:</strong> Clientes adicionados aqui recebem monitoramento com inteligência perimetral. Ao dispararem ameaças durante sua janela de funcionamento, mensagens automatizadas no WhatsApp são repassadas com as fotos.
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono bg-[#10B981]/15 text-[#10B981] px-2 py-0.5 rounded border border-[#10B981]/20">
-                    {registeredClients.length} Cadastrados
-                  </span>
                 </div>
 
-                <div className="p-6 space-y-4 font-mono text-xs flex-1">
+              </div>
+            ) : (
+              /* PANEL FINANCEIRO SUB-TAB DE ASSINATURAS */
+              <div id="financeiro_subtab" className="space-y-6">
+                
+                {/* 4 HIGHLIGHT CARD METRICS FOR FINANCIAL STATS */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   
+                  {/* METRIC 1: TOTAL BILLING EXPECTED */}
+                  <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-gray-400 font-mono font-bold">Expectativa Mensal</p>
+                      <h3 className="text-[19px] font-bold text-violet-400 font-mono mt-1">
+                        R$ {registeredClients.reduce((acc, c) => {
+                          const str = (c.paymentValue || "149,00").replace(",", ".");
+                          return acc + (parseFloat(str) || 149.00);
+                        }, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </h3>
+                      <p className="text-[10px] text-gray-500 mt-1">Estimado 100% de carteira</p>
+                    </div>
+                    <div className="p-2.5 bg-violet-500/10 rounded-lg text-violet-400 border border-violet-500/20">
+                      <Coins className="w-5 h-5" />
+                    </div>
+                  </div>
+
+                  {/* METRIC 2: TOTAL PAID */}
+                  <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-[#10B981] font-mono font-bold">Total Recebido</p>
+                      <h3 className="text-[19px] font-bold text-emerald-400 font-mono mt-1">
+                        R$ {registeredClients.reduce((acc, c) => {
+                          if (c.paymentStatus !== "Pago") return acc;
+                          const str = (c.paymentValue || "149,00").replace(",", ".");
+                          return acc + (parseFloat(str) || 149.00);
+                        }, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </h3>
+                      <p className="text-[10px] text-gray-500 mt-1">Faturas liquidadas no mês</p>
+                    </div>
+                    <div className="p-2.5 bg-emerald-500/10 rounded-lg text-emerald-400 border border-emerald-500/20">
+                      <CheckCircle className="w-5 h-5" />
+                    </div>
+                  </div>
+
+                  {/* METRIC 3: TOTAL PENDING */}
+                  <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-amber-500 font-mono font-bold">Cobrança Pendente</p>
+                      <h3 className="text-[19px] font-bold text-yellow-400 font-mono mt-1">
+                        R$ {registeredClients.reduce((acc, c) => {
+                          if (c.paymentStatus !== "Pendente") return acc;
+                          const str = (c.paymentValue || "149,00").replace(",", ".");
+                          return acc + (parseFloat(str) || 149.00);
+                        }, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </h3>
+                      <p className="text-[10px] text-gray-500 mt-1">Aguardando vencimento</p>
+                    </div>
+                    <div className="p-2.5 bg-amber-500/10 rounded-lg text-amber-400 border border-amber-500/20">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                  </div>
+
+                  {/* METRIC 4: TOTAL INADIMPLENCIA / GAPs */}
+                  <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-red-500 font-mono font-bold">Inadimplência</p>
+                      <h3 className="text-[19px] font-bold text-red-400 font-mono mt-1">
+                        R$ {registeredClients.reduce((acc, c) => {
+                          if (c.paymentStatus !== "Atrasado") return acc;
+                          const str = (c.paymentValue || "149,00").replace(",", ".");
+                          return acc + (parseFloat(str) || 149.00);
+                        }, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </h3>
+                      <p className="text-[10px] text-gray-500 mt-1">Atrasasdos / Vencidos</p>
+                    </div>
+                    <div className="p-2.5 bg-red-500/10 rounded-lg text-red-400 border border-red-500/20">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* DETAILED LEDGER OF INVOICES */}
+                <div className="bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden shadow-xl">
+                  <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-emerald-500/10 rounded-lg text-emerald-400 border border-emerald-500/20">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-white text-xs uppercase tracking-wider font-mono">Consolidador Contábil e de Faturamento</h4>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Clique nas tags de status para gerenciar o adimplemento</p>
+                      </div>
+                    </div>
+                    <span className="text-[9px] font-mono bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/25 px-2 py-0.5 rounded">
+                      TAXA RETENÇÃO: 100%
+                    </span>
+                  </div>
+
                   {registeredClients.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">
-                      <UserCheck className="w-12 h-12 mx-auto text-gray-600 opacity-30 mb-2 animate-pulse" />
-                      <p>Nenhum comerciante cadastrado nesta central.</p>
+                    <div className="text-center py-12 text-gray-500 font-mono text-xs">
+                      <Coins className="w-12 h-12 text-gray-600 opacity-20 mx-auto animate-pulse mb-2" />
+                      <p>Nenhum cliente disponível para análise financeira.</p>
                     </div>
                   ) : (
-                    <div className="space-y-3 overflow-y-auto max-h-[350px]">
-                      {registeredClients.map((client) => (
-                        <div 
-                          key={client.id}
-                          className="p-3.5 bg-[#090D14] border border-gray-800 rounded-xl space-y-2 relative"
-                        >
-                          <div className="flex items-start justify-between min-w-0 pr-6">
-                            <div>
-                              <h4 className="font-bold text-white text-[13px]">{client.tradingName}</h4>
-                              <p className="text-[9px] text-gray-500 pt-0.5">Registrado: {new Date(client.createdAt).toLocaleDateString("pt-BR")} às {new Date(client.createdAt).toLocaleTimeString("pt-BR")}</p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteClient(client.id)}
-                              className="absolute top-3.5 right-3.5 p-1 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
-                              title="Remover Comércio"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left font-mono border-collapse text-xs">
+                        <thead>
+                          <tr className="border-b border-[#1E293B] bg-[#0E1524] text-gray-400 uppercase tracking-wider text-[10px]">
+                            <th className="p-4">Cliente / Estabelecimento</th>
+                            <th className="p-4">Plano Ativo</th>
+                            <th className="p-4 text-center">Vencimento</th>
+                            <th className="p-4">Valor Mensal</th>
+                            <th className="p-4 text-center">Status Pagamento</th>
+                            <th className="p-4 text-right">Ação de Cobrança</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#1E293B] text-gray-300">
+                          {registeredClients.map((client) => {
+                            const valStr = client.paymentValue || "149,00";
+                            const feePlan = client.planName || "Bronze Monitor";
+                            const payMethod = client.paymentMethod || "Pix";
+                            const due = client.dueDate || "10";
+                            const statusColor = 
+                              client.paymentStatus === "Pago" 
+                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold" 
+                                : client.paymentStatus === "Pendente" 
+                                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/30 font-bold animate-pulse" 
+                                  : "bg-red-500/15 text-red-400 border border-red-500/30 font-bold";
 
-                          <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-gray-800">
-                            <div>
-                              <p className="text-gray-500 text-[9px] uppercase">WhatsApp</p>
-                              <p className="text-blue-400 font-bold">{client.whatsapp}</p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500 text-[9px] uppercase">Horário Comercial</p>
-                              <p className="text-white font-bold font-mono">⏰ {client.openTime} às {client.closeTime}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                            return (
+                              <tr key={client.id} className="hover:bg-[#0E1524]/40 transition-colors">
+                                <td className="p-4">
+                                  <p className="font-bold text-white text-[13px]">{client.tradingName}</p>
+                                  <p className="text-[10px] text-blue-400 font-mono">{client.whatsapp}</p>
+                                </td>
+                                <td className="p-4 align-middle">
+                                  <span className="bg-gray-800/80 px-2 py-1 rounded text-white border border-gray-700/60 font-semibold">{feePlan}</span>
+                                </td>
+                                <td className="p-4 text-center align-middle font-bold text-white">
+                                  Dia {due}
+                                </td>
+                                <td className="p-4 font-bold text-emerald-400 align-middle">
+                                  R$ {valStr} <span className="text-gray-500 text-[10px] font-normal">({payMethod})</span>
+                                </td>
+                                <td className="p-4 text-center align-middle">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const nextStatus = client.paymentStatus === "Pago" ? "Pendente" : client.paymentStatus === "Pendente" ? "Atrasado" : "Pago";
+                                      setRegisteredClients(prev => prev.map(c => c.id === client.id ? { ...c, paymentStatus: nextStatus } : c));
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-[10px] cursor-pointer transition-all hover:brightness-110 active:scale-95 ${statusColor}`}
+                                  >
+                                    {client.paymentStatus || "Pendente"}
+                                  </button>
+                                </td>
+                                <td className="p-4 text-right align-middle">
+                                  <button
+                                    type="button"
+                                    onClick={() => setBillingClient(client)}
+                                    className="p-2 py-1.5 rounded-lg bg-emerald-500 text-black hover:bg-emerald-400 font-extrabold uppercase text-[10px] transition-colors cursor-pointer inline-flex items-center gap-1 hover:shadow-lg shadow-emerald-500/10"
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5 text-black" />
+                                    Cobrar WhatsApp
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   )}
 
-                  <div className="bg-[#0E1524] p-3.5 rounded-xl border border-gray-800 text-[10px] text-gray-400 leading-relaxed">
-                    💡 <strong>Otimização de rotas:</strong> Clientes adicionados aqui recebem monitoramento com inteligência perimetral. Ao dispararem ameaças durante sua janela de funcionamento, mensagens automatizadas no WhatsApp são repassadas com as fotos.
+                  <div className="bg-[#0E1524] p-4 text-[10px] text-gray-400 leading-relaxed border-t border-[#1E293B] flex flex-col md:flex-row items-center justify-between gap-2.5">
+                    <p>💡 <strong>Gestão de adimplemento facilitada:</strong> Conecte canais para monitorar datas de vencimento automaticamente e disparar disparadores de alertas.</p>
+                    <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-bold">TECNOLOGIA OPERACIONAL NDS</span>
                   </div>
                 </div>
-              </div>
 
-            </div>
+              </div>
+            )}
+
           </div>
         )}
 

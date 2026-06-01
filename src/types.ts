@@ -78,6 +78,12 @@ export interface NDSClient {
   openTime: string;
   closeTime: string;
   createdAt: string;
+  planId?: string;
+  planName?: string;
+  paymentStatus?: "Pago" | "Pendente" | "Atrasado";
+  paymentValue?: string;
+  paymentMethod?: "Pix" | "Boleto" | "Cartão" | "Dinheiro";
+  dueDate?: string;
 }
 
 export interface IntelbrasDVR {
