@@ -71,3 +71,13 @@ export interface SubscriptionPlan {
   isPopular: boolean;
 }
 
+export interface NDSClient {
+  id: string;
+  tradingName: string;
+  whatsapp: string;
+  openTime: string;
+  closeTime: string;
+  createdAt: string;
+}
+
+
