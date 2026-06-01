@@ -41,8 +41,13 @@ import { convertUrlToBase64, generateMockCCTVPlaceholder, formatTime, formatDate
 export default function App() {
   // Persistence with LocalStorage
   const [isSimplifiedMode, setIsSimplifiedMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem("rv_simplified_mode");
-    return saved ? JSON.parse(saved) : false;
+    try {
+      const saved = localStorage.getItem("rv_simplified_mode");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error parsing rv_simplified_mode", e);
+    }
+    return false;
   });
 
   useEffect(() => {
@@ -67,23 +72,43 @@ export default function App() {
   };
 
   const [feeds, setFeeds] = useState<CameraFeed[]>(() => {
-    const saved = localStorage.getItem("rv_feeds");
-    return saved ? JSON.parse(saved) : INITIAL_FEEDS;
+    try {
+      const saved = localStorage.getItem("rv_feeds");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error parsing rv_feeds", e);
+    }
+    return INITIAL_FEEDS;
   });
 
   const [logs, setLogs] = useState<VerificationLog[]>(() => {
-    const saved = localStorage.getItem("rv_logs");
-    return saved ? JSON.parse(saved) : INITIAL_LOGS;
+    try {
+      const saved = localStorage.getItem("rv_logs");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error parsing rv_logs", e);
+    }
+    return INITIAL_LOGS;
   });
 
   const [schedules, setSchedules] = useState<WhatsAppSchedule[]>(() => {
-    const saved = localStorage.getItem("rv_schedules");
-    return saved ? JSON.parse(saved) : INITIAL_SCHEDULES;
+    try {
+      const saved = localStorage.getItem("rv_schedules");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error parsing rv_schedules", e);
+    }
+    return INITIAL_SCHEDULES;
   });
 
   const [dvrDevices, setDvrDevices] = useState<DVRAccessDevice[]>(() => {
-    const saved = localStorage.getItem("rv_dvr_devices");
-    return saved ? JSON.parse(saved) : INITIAL_DVR_DEVICES;
+    try {
+      const saved = localStorage.getItem("rv_dvr_devices");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error parsing rv_dvr_devices", e);
+    }
+    return INITIAL_DVR_DEVICES;
   });
 
   // State for System Statistics
@@ -122,8 +147,13 @@ export default function App() {
 
   // Integration credentials for Supabase & n8n
   const [integrationConfig, setIntegrationConfig] = useState<SupabaseN8nConfig>(() => {
-    const saved = localStorage.getItem("rv_integration_config");
-    return saved ? JSON.parse(saved) : {
+    try {
+      const saved = localStorage.getItem("rv_integration_config");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error parsing rv_integration_config", e);
+    }
+    return {
       supabaseUrl: "https://twhnphvyrshdnyisbyux.supabase.co",
       supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR3aG5waHZ5cnNoZG55aXNieXV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDQwOTYwMDAsImV4cCI6MjAwNzY3MjAwMH0.fakeKey",
       n8nWebhookUrl: "https://n8n.nds-seguranca.com.br/webhook/9cfbd913-2d10-4ecb-99d1-0f73b320d771",
@@ -179,8 +209,12 @@ export default function App() {
   const [intelbrasDvrStream, setIntelbrasDvrStream] = useState<"Principal" | "Extra">("Extra");
 
   const [intelbrasDvrs, setIntelbrasDvrs] = useState<IntelbrasDVR[]>(() => {
-    const saved = localStorage.getItem("rv_cloud_dvrs");
-    if (saved) return JSON.parse(saved);
+    try {
+      const saved = localStorage.getItem("rv_cloud_dvrs");
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error("Error parsing rv_cloud_dvrs", e);
+    }
     return [
       {
         id: "dvr-cloud-1",
