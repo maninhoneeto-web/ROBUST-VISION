@@ -826,7 +826,7 @@ export default function App() {
       planId: clientPlanId,
       planName: planNameName,
       paymentStatus: clientPaymentStatus,
-      paymentValue: clientPaymentValue.trim(),
+      paymentValue: (clientPaymentValue || "").toString().trim(),
       paymentMethod: clientPaymentMethod,
       dueDate: clientDueDate,
       timestamp: new Date().toISOString()
@@ -921,9 +921,10 @@ export default function App() {
   };
 
   const handleDeleteClient = (id: string) => {
-    if (confirm("Remover comerciante cadastrado da central?")) {
-      setRegisteredClients(prev => prev.filter(c => c.id !== id));
-    }
+    // Elegant, non-blocking state updates suitable for iframe previews without SecurityError
+    const clientName = (registeredClients || []).find(c => c?.id === id)?.tradingName || "Comércio";
+    setRegisteredClients(prev => (prev || []).filter(c => c?.id !== id));
+    showAppAlert(`O comerciante "${clientName}" foi removido com sucesso de sua central administrativa local.`, "Cliente Removido", "success");
   };
 
   // --- ACTIONS FOR PHYSICAL DVR / CLOUD INTEGRATION ---
@@ -986,9 +987,8 @@ export default function App() {
 
   // Helper to clear log database
   const clearLogs = () => {
-    if (confirm("Deseja realmente limpar todo o histórico de logs?")) {
-      setLogs([]);
-    }
+    setLogs([]);
+    showAppAlert("O histórico de logs de monitoramento foi limpo com sucesso da memória de visualização.", "Histórico Limpo", "success");
   };
 
   return (
@@ -2167,7 +2167,7 @@ export default function App() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {registeredClients.map((client) => {
+                  {(registeredClients || []).filter(Boolean).map((client) => {
                     return (
                       <div key={client.id} className="bg-[#0E1524] border border-gray-800 hover:border-amber-500/30 transition-all rounded-xl p-4 flex flex-col justify-between space-y-4">
                         <div className="space-y-2">
@@ -2203,8 +2203,8 @@ export default function App() {
                                 key={p.id}
                                 onClick={() => {
                                   // Instantly update this specific client's plan locally
-                                  const updated = registeredClients.map(c => {
-                                    if (c.id === client.id) {
+                                  const updated = (registeredClients || []).filter(Boolean).map(c => {
+                                    if (c?.id === client?.id) {
                                       const numericVal = p.price.replace("R$", "").trim() + ",00";
                                       return {
                                         ...c,
@@ -2808,7 +2808,7 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="space-y-3 overflow-y-auto max-h-[420px] pr-1">
-                        {registeredClients.map((client) => {
+                        {(registeredClients || []).filter(Boolean).map((client) => {
                           const statusColor = 
                             client.paymentStatus === "Pago" 
                               ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
@@ -2894,7 +2894,7 @@ export default function App() {
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-gray-400 font-mono font-bold">Expectativa Mensal</p>
                       <h3 className="text-[19px] font-bold text-violet-400 font-mono mt-1">
-                        R$ {registeredClients.reduce((acc, c) => {
+                        R$ {(registeredClients || []).filter(Boolean).reduce((acc, c) => {
                           const str = String(c.paymentValue || "149,00").replace(",", ".");
                           return acc + (parseFloat(str) || 149.00);
                         }, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2911,7 +2911,7 @@ export default function App() {
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-[#10B981] font-mono font-bold">Total Recebido</p>
                       <h3 className="text-[19px] font-bold text-emerald-400 font-mono mt-1">
-                        R$ {registeredClients.reduce((acc, c) => {
+                        R$ {(registeredClients || []).filter(Boolean).reduce((acc, c) => {
                           if (c.paymentStatus !== "Pago") return acc;
                           const str = String(c.paymentValue || "149,00").replace(",", ".");
                           return acc + (parseFloat(str) || 149.00);
@@ -2929,7 +2929,7 @@ export default function App() {
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-amber-500 font-mono font-bold">Cobrança Pendente</p>
                       <h3 className="text-[19px] font-bold text-yellow-400 font-mono mt-1">
-                        R$ {registeredClients.reduce((acc, c) => {
+                        R$ {(registeredClients || []).filter(Boolean).reduce((acc, c) => {
                           if (c.paymentStatus !== "Pendente") return acc;
                           const str = String(c.paymentValue || "149,00").replace(",", ".");
                           return acc + (parseFloat(str) || 149.00);
@@ -2947,7 +2947,7 @@ export default function App() {
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-red-500 font-mono font-bold">Inadimplência</p>
                       <h3 className="text-[19px] font-bold text-red-400 font-mono mt-1">
-                        R$ {registeredClients.reduce((acc, c) => {
+                        R$ {(registeredClients || []).filter(Boolean).reduce((acc, c) => {
                           if (c.paymentStatus !== "Atrasado") return acc;
                           const str = String(c.paymentValue || "149,00").replace(",", ".");
                           return acc + (parseFloat(str) || 149.00);
@@ -2998,7 +2998,7 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#1E293B] text-gray-300">
-                          {registeredClients.map((client) => {
+                          {(registeredClients || []).filter(Boolean).map((client) => {
                             const valStr = client.paymentValue || "149,00";
                             const feePlan = client.planName || "Bronze Monitor";
                             const payMethod = client.paymentMethod || "Pix";
