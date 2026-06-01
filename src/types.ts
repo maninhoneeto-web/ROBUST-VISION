@@ -80,4 +80,19 @@ export interface NDSClient {
   createdAt: string;
 }
 
+export interface IntelbrasDVR {
+  id: string;
+  name: string;
+  integrationType: "iSIC Lite" | "Intelbras Cloud";
+  addressOrSerial: string; // IP/Domain for iSIC Lite or Serial/Cloud ID for Intelbras Cloud
+  port: number;
+  user: string;
+  password?: string;
+  channelsCount: number;
+  streamType: "Principal" | "Extra";
+  connected: boolean;
+  createdAt: string;
+}
+
+
 
