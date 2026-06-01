@@ -2113,8 +2113,26 @@ export default function App() {
 
                     <div className="pt-5 mt-5 border-t border-gray-800">
                       <button
+                        type="button"
                         onClick={() => {
-                          showAppAlert(`Plano "${plan.name}" pré-selecionado com sucesso! O faturamento será configurado sob medida pelo time operacional NDS.`, "Mensalidade Habilitada", "success");
+                          // Pre-select plan and set form input values
+                          setClientPlanId(plan.id);
+                          const cleanPrice = plan.price.replace("R$", "").trim() + ",00";
+                          setClientPaymentValue(cleanPrice);
+
+                          // Instantly route to registering clients tab and the registration form subtab
+                          setActiveTab("admin_clients");
+                          setAdminSubTab("cadastro");
+
+                          // Smooth scroll user to top where the form lives
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+
+                          // Show informative alert about the pre-filled redirect
+                          showAppAlert(
+                            `✓ Plano "${plan.name}" pré-selecionado automaticamente! Você foi redirecionado ao topo do cadastro de clientes, com o valor de R$ ${cleanPrice} e plano ativo pré-configurados.`,
+                            "Formulário Configurado",
+                            "success"
+                          );
                         }}
                         className={`w-full py-2 rounded-lg font-bold text-xs uppercase transition-all tracking-wider font-mono cursor-pointer ${
                           plan.isPopular 
