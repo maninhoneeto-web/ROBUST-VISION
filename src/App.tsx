@@ -38,11 +38,34 @@ import { CameraFeed, VerificationLog, WhatsAppSchedule, DVRAccessDevice, SystemS
 import { INITIAL_FEEDS, INITIAL_LOGS, INITIAL_SCHEDULES, INITIAL_DVR_DEVICES, SUBSCRIPTION_PLANS, robustVisionLogo } from "./data";
 import { convertUrlToBase64, generateMockCCTVPlaceholder, formatTime, formatDate } from "./utils";
 
+// Safe storage helper with memory/safe fallback to prevent Sandbox Iframe SecurityError crashes
+const safeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        return window.localStorage.getItem(key);
+      }
+    } catch (e) {
+      console.warn("Storage item retrieval failed (unauthorized in iframe sandbox):", e);
+    }
+    return null;
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        window.localStorage.setItem(key, value);
+      }
+    } catch (e) {
+      console.warn("Storage item write failed (unauthorized in iframe sandbox):", e);
+    }
+  }
+};
+
 export default function App() {
-  // Persistence with LocalStorage
+  // Persistence with LocalStorage using safeStorage helper
   const [isSimplifiedMode, setIsSimplifiedMode] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem("rv_simplified_mode");
+      const saved = safeStorage.getItem("rv_simplified_mode");
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error("Error parsing rv_simplified_mode", e);
@@ -51,7 +74,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    localStorage.setItem("rv_simplified_mode", JSON.stringify(isSimplifiedMode));
+    safeStorage.setItem("rv_simplified_mode", JSON.stringify(isSimplifiedMode));
   }, [isSimplifiedMode]);
 
   // Modern Non-Blocking App Notification State
@@ -73,7 +96,7 @@ export default function App() {
 
   const [feeds, setFeeds] = useState<CameraFeed[]>(() => {
     try {
-      const saved = localStorage.getItem("rv_feeds");
+      const saved = safeStorage.getItem("rv_feeds");
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error("Error parsing rv_feeds", e);
@@ -83,7 +106,7 @@ export default function App() {
 
   const [logs, setLogs] = useState<VerificationLog[]>(() => {
     try {
-      const saved = localStorage.getItem("rv_logs");
+      const saved = safeStorage.getItem("rv_logs");
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error("Error parsing rv_logs", e);
@@ -93,7 +116,7 @@ export default function App() {
 
   const [schedules, setSchedules] = useState<WhatsAppSchedule[]>(() => {
     try {
-      const saved = localStorage.getItem("rv_schedules");
+      const saved = safeStorage.getItem("rv_schedules");
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error("Error parsing rv_schedules", e);
@@ -103,7 +126,7 @@ export default function App() {
 
   const [dvrDevices, setDvrDevices] = useState<DVRAccessDevice[]>(() => {
     try {
-      const saved = localStorage.getItem("rv_dvr_devices");
+      const saved = safeStorage.getItem("rv_dvr_devices");
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error("Error parsing rv_dvr_devices", e);
@@ -148,7 +171,7 @@ export default function App() {
   // Integration credentials for Supabase & n8n
   const [integrationConfig, setIntegrationConfig] = useState<SupabaseN8nConfig>(() => {
     try {
-      const saved = localStorage.getItem("rv_integration_config");
+      const saved = safeStorage.getItem("rv_integration_config");
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error("Error parsing rv_integration_config", e);
@@ -200,7 +223,7 @@ export default function App() {
 
   // --- INTELBRAS DVR & ISIC LITE STATE VARIABLES ---
   const [intelbrasDvrName, setIntelbrasDvrName] = useState("");
-  const [intelbrasDvrType, setIntelbrasDvrType] = useState<"iSIC Lite" | "Intelbras Cloud">("iSIC Lite");
+  const [intelbrasDvrType, setIntelbrasDvrType] = useState<"iSIC Lite" | "Intelbras Cloud" & string>("iSIC Lite");
   const [intelbrasDvrAddressOrSerial, setIntelbrasDvrAddressOrSerial] = useState("");
   const [intelbrasDvrPort, setIntelbrasDvrPort] = useState(37777);
   const [intelbrasDvrUser, setIntelbrasDvrUser] = useState("admin");
@@ -210,7 +233,7 @@ export default function App() {
 
   const [intelbrasDvrs, setIntelbrasDvrs] = useState<IntelbrasDVR[]>(() => {
     try {
-      const saved = localStorage.getItem("rv_cloud_dvrs");
+      const saved = safeStorage.getItem("rv_cloud_dvrs");
       if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error("Error parsing rv_cloud_dvrs", e);
@@ -256,7 +279,7 @@ export default function App() {
 
   const [registeredClients, setRegisteredClients] = useState<NDSClient[]>(() => {
     try {
-      const saved = localStorage.getItem("rv_registered_clients");
+      const saved = safeStorage.getItem("rv_registered_clients");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
@@ -310,33 +333,33 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedFeed = feeds.find((f) => f.id === selectedFeedId) || feeds[0];
 
-  // Sync state to local storage on changes
+  // Sync state to local storage on changes using safeStorage helper
   useEffect(() => {
-    localStorage.setItem("rv_feeds", JSON.stringify(feeds));
+    safeStorage.setItem("rv_feeds", JSON.stringify(feeds));
   }, [feeds]);
 
   useEffect(() => {
-    localStorage.setItem("rv_logs", JSON.stringify(logs));
+    safeStorage.setItem("rv_logs", JSON.stringify(logs));
   }, [logs]);
 
   useEffect(() => {
-    localStorage.setItem("rv_schedules", JSON.stringify(schedules));
+    safeStorage.setItem("rv_schedules", JSON.stringify(schedules));
   }, [schedules]);
 
   useEffect(() => {
-    localStorage.setItem("rv_dvr_devices", JSON.stringify(dvrDevices));
+    safeStorage.setItem("rv_dvr_devices", JSON.stringify(dvrDevices));
   }, [dvrDevices]);
 
   useEffect(() => {
-    localStorage.setItem("rv_integration_config", JSON.stringify(integrationConfig));
+    safeStorage.setItem("rv_integration_config", JSON.stringify(integrationConfig));
   }, [integrationConfig]);
 
   useEffect(() => {
-    localStorage.setItem("rv_registered_clients", JSON.stringify(registeredClients));
+    safeStorage.setItem("rv_registered_clients", JSON.stringify(registeredClients));
   }, [registeredClients]);
 
   useEffect(() => {
-    localStorage.setItem("rv_cloud_dvrs", JSON.stringify(intelbrasDvrs));
+    safeStorage.setItem("rv_cloud_dvrs", JSON.stringify(intelbrasDvrs));
   }, [intelbrasDvrs]);
 
   // Generate dynamic placeholder for Camera 4 which relies on canvas
@@ -2251,7 +2274,7 @@ export default function App() {
                                     return c;
                                   });
                                   setRegisteredClients(updated);
-                                  localStorage.setItem("rv_registered_clients", JSON.stringify(updated));
+                                  safeStorage.setItem("rv_registered_clients", JSON.stringify(updated));
                                   
                                   // Log simulated terminal
                                   const timeStr = new Date().toLocaleTimeString("pt-BR");
