@@ -218,10 +218,20 @@ export default function App() {
   const [clientPaymentMethod, setClientPaymentMethod] = useState<"Pix" | "Boleto" | "Cartão" | "Dinheiro">("Pix");
   const [clientDueDate, setClientDueDate] = useState("10");
   const [adminSubTab, setAdminSubTab] = useState<"cadastro" | "financeiro">("cadastro");
+  const [plansActiveSubTab, setPlansActiveSubTab] = useState<"pricing" | "predefined_unlock">("pricing");
 
   const [registeredClients, setRegisteredClients] = useState<NDSClient[]>(() => {
-    const saved = localStorage.getItem("rv_registered_clients");
-    if (saved) return JSON.parse(saved);
+    try {
+      const saved = localStorage.getItem("rv_registered_clients");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(item => item && typeof item === "object" && item.id);
+        }
+      }
+    } catch (e) {
+      console.error("Error loading rv_registered_clients", e);
+    }
     return [
       {
         id: "client-1",
@@ -1766,7 +1776,7 @@ export default function App() {
                           
                           {dev.lastAccessTime ? (
                             <p className="text-[9px] text-gray-500">
-                              Última conexão: {new Date(dev.lastAccessTime).toLocaleTimeString("pt-BR")} | {new Date(dev.lastAccessTime).toLocaleDateString("pt-BR")}
+                              Última conexão: {formatTime(dev.lastAccessTime)} | {formatDate(dev.lastAccessTime)}
                             </p>
                           ) : (
                             <p className="text-[9px] text-gray-600">Nenhuma tentativa de login recente</p>
@@ -1976,80 +1986,276 @@ export default function App() {
 
         {/* TABELA DE ASSINATURA ROBUST VISION */}
         <section id="signature_plans_section" className="bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden p-6 space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#1E293B] pb-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#1E293B] pb-4">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-wider text-white font-mono flex items-center gap-2">
                 <SlidersHorizontal className="w-4 h-4 text-[#10B981]" /> Tabela de Assinaturas e Planos NDS
               </h3>
-              <p className="text-[11px] text-gray-500 mt-0.5">Escolha o plano Robust Vision ideal para a cobertura de CFTV corporativo e automações de sua central</p>
+              <p className="text-[11px] text-gray-500 mt-0.5">Escolha os planos de faturamento ou libere o acesso e ative licenças para clientes pré-definidos</p>
             </div>
-            <span className="text-[10px] font-mono bg-[#10B981]/15 text-[#10B981] px-2.5 py-1 rounded border border-[#10B981]/30 uppercase font-bold animate-pulse">
-              Faturamento Corporativo NDS
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {SUBSCRIPTION_PLANS.map((plan) => (
-              <div 
-                key={plan.id}
-                className={`relative rounded-2xl border p-5 flex flex-col justify-between transition-all duration-300 ${
-                  plan.isPopular 
-                    ? "bg-[#0E1524] border-[#10B981]/50 shadow-lg shadow-[#10B981]/5 ring-2 ring-[#10B981]/10" 
-                    : "bg-[#0A0F18] border-[#1E293B] hover:border-gray-700"
+            
+            {/* SUB-TABS SELECTOR */}
+            <div className="flex items-center bg-[#0E1524] p-1 rounded-xl border border-gray-800 font-mono text-[11px] self-start lg:self-auto shrink-0">
+              <button
+                type="button"
+                onClick={() => setPlansActiveSubTab("pricing")}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  plansActiveSubTab === "pricing"
+                    ? "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/25"
+                    : "text-gray-400 hover:text-white"
                 }`}
               >
-                {plan.isPopular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-mono tracking-widest font-extrabold uppercase px-2.5 py-0.5 rounded bg-gradient-to-r from-[#10B981] to-[#3B82F6] text-white">
-                    MAIS VENDIDO (RECOMENDADO)
-                  </span>
-                )}
+                1. Planos & Preços (Análise)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlansActiveSubTab("predefined_unlock")}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  plansActiveSubTab === "predefined_unlock"
+                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/25 animate-pulse"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                <Lock className="w-3 h-3 text-amber-400" /> 2. Liberar Acesso Clientes
+              </button>
+            </div>
+          </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-white font-mono">{plan.name}</h4>
-                    <p className="text-xs text-gray-400">Escala de CFTV recomendada</p>
+          {plansActiveSubTab === "pricing" ? (
+            <div className="space-y-6">
+              {/* BRAND STRATEGY BOX - RESPONDING TO "QUE VC ACHA DESTA AÇÃO" & "PROIBIDO REVENDA" */}
+              <div className="bg-[#0E1524] border border-amber-500/25 rounded-xl p-4.5 font-mono text-[11px] text-gray-300 leading-relaxed grid grid-cols-1 md:grid-cols-12 gap-5">
+                <div className="md:col-span-8 space-y-2">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold uppercase text-[10px]">
+                    <span className="bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 text-[9px]">👑 GARANTIA DE MONOPÓLIO E AUTORIDADE MAXIMA</span>
                   </div>
-
-                  <div className="flex items-baseline gap-1 text-white border-b border-gray-800 pb-3">
-                    <span className="text-2xl font-bold font-mono text-white">{plan.price}</span>
-                    <span className="text-xs text-gray-500">/ {plan.period}</span>
-                  </div>
-
-                  <ul className="space-y-2 text-xs font-mono text-gray-400">
-                    <li className="flex items-center gap-2 text-white">
-                      <CheckCircle className="w-3.5 h-3.5 text-[#10B981]" /> {plan.camerasCount}
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className={`w-3.5 h-3.5 ${plan.hasWhatsApp ? "text-[#10B981]" : "text-gray-600"}`} /> 
-                      WhatsApp Periódico: {plan.hasWhatsApp ? "Disponível" : "Não disponível"}
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className={`w-3.5 h-3.5 ${plan.hasN8nSupabase ? "text-[#10B981]" : "text-gray-600"}`} /> 
-                      Integração n8n & Supabase: {plan.hasN8nSupabase ? "Inclusa" : "Não disponível"}
-                    </li>
-                    <li className="flex items-center gap-2 text-gray-500">
-                      <CheckCircle className="w-3.5 h-3.5 text-gray-700" /> Suporte Técnico NDS 24h
-                    </li>
+                  <h4 className="text-white font-bold text-xs uppercase">Estratégia Blindada de Distribuição (Sem Direito a Revenda)</h4>
+                  <p className="text-gray-400 text-[11px] leading-relaxed">
+                    Você tem total razão na sua visão de mercado! Permitir que terceiros revendam seu sistema criaria concorrentes perretas dentro de sua própria base. Por isso, as regras de licenciamento do <strong className="text-white">Robust Vision</strong> foram firmadas sob extrema segurança:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1.5 text-gray-400 text-[11px]">
+                    <li><strong className="text-white">Fidelidade Unitária</strong>: A licença vitalícia de <strong>R$ 290</strong> é atrelada estritamente ao hardware IP/MAC de <span className="text-amber-400 font-bold">um único DVR de até 16 canais</span>. Não existe possibilidade de empacotar ou re-distribuir.</li>
+                    <li><strong className="text-white">Proibição Expressa de Revenda / Whitelabel</strong>: Não há direito de repasse ou sub-distribuição comercial. Toda a soberania de validação, alteração de firmas e logs é sua e passa exclusivamente por sua infraestrutura n8n/Supabase.</li>
+                    <li><strong className="text-white">Controle Centralizado</strong>: Seus clientes finais só utilizam o app em modo passivo. Os tokens de autenticação de alerta e disparos de WhatsApp são gerados e validados apenas debaixo do seu painel administrativo.</li>
                   </ul>
                 </div>
-
-                <div className="pt-5 mt-5 border-t border-gray-800">
-                  <button
-                    onClick={() => {
-                      showAppAlert(`Plano "${plan.name}" pré-selecionado com sucesso! O faturamento será configurado sob medida pelo time operacional NDS.`, "Mensalidade Habilitada", "success");
-                    }}
-                    className={`w-full py-2 rounded-lg font-bold text-xs uppercase transition-all tracking-wider font-mono cursor-pointer ${
-                      plan.isPopular 
-                        ? "bg-[#10B981] hover:bg-emerald-500 text-black font-semibold text-xs" 
-                        : "bg-gray-850 hover:bg-gray-800 text-white border border-gray-750"
-                    }`}
-                  >
-                    Ativar Assinatura {plan.name}
-                  </button>
+                <div className="md:col-span-4 bg-[#111827] border border-red-500/20 p-4 rounded-lg flex flex-col justify-center space-y-2 text-center relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/5 rounded-full blur-xl pointer-events-none" />
+                  <span className="text-[10px] text-red-400 uppercase font-bold tracking-wider font-mono">Blindagem Estrutural</span>
+                  <div className="text-white font-extrabold text-xs font-mono">Concorrência Zero</div>
+                  <p className="text-[9.5px] text-gray-450 leading-normal">
+                    Seu sistema nunca vira arma de terceiros. Autoridade comercial 100% retida em suas mãos. Licença protegida por firmware.
+                  </p>
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+                {SUBSCRIPTION_PLANS.map((plan) => (
+                  <div 
+                    key={plan.id}
+                    className={`relative rounded-2xl border p-5 flex flex-col justify-between transition-all duration-300 ${
+                      plan.isPopular 
+                        ? "bg-[#0E1524] border-[#10B981]/50 shadow-lg shadow-[#10B981]/5 ring-2 ring-[#10B981]/10" 
+                        : "bg-[#0A0F18] border-amber-500/20 hover:border-amber-500/40"
+                    }`}
+                  >
+                    {plan.isPopular ? (
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-mono tracking-widest font-extrabold uppercase px-2.5 py-0.5 rounded bg-gradient-to-r from-[#10B981] to-[#3B82F6] text-white">
+                        RECORRÊNCIA MENSAL
+                      </span>
+                    ) : (
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[9px] font-mono tracking-widest font-extrabold uppercase px-2.5 py-0.5 rounded bg-amber-500/25 text-amber-400 border border-amber-500/40">
+                        PAGAMENTO ÚNICO
+                      </span>
+                    )}
+                    
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-white font-mono flex items-center gap-1.5">
+                          {plan.id === "plan-silver" && <Shield className="w-4 h-4 text-amber-400" />} {plan.name}
+                        </h4>
+                        <p className="text-xs text-gray-400">Modelo de licenciamento exclusivo</p>
+                      </div>
+
+                      <div className="flex items-baseline gap-1 text-white border-b border-gray-800 pb-3">
+                        <span className="text-2xl font-bold font-mono text-white">{plan.price}</span>
+                        <span className="text-xs text-gray-500">/ {plan.period}</span>
+                      </div>
+
+                      <ul className="space-y-2.5 text-xs font-mono text-gray-400">
+                        <li className="flex items-center gap-2 text-white">
+                          <CheckCircle className="w-3.5 h-3.5 text-[#10B981]" /> {plan.camerasCount}
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle className="w-3.5 h-3.5 text-[#10B981]" /> 
+                          WhatsApp Periódico: Habilitado
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <CheckCircle className="w-3.5 h-3.5 text-[#10B981]" /> 
+                          Integração n8n & Supabase: Inclusa
+                        </li>
+                        {plan.id === "plan-silver" ? (
+                          <li className="flex items-start gap-2 text-amber-400 font-bold bg-amber-950/20 p-2 rounded border border-amber-950/40 mt-1">
+                            <Lock className="w-3.5 h-3.5 relative top-0.5 shrink-0 text-amber-400" />
+                            <span>SEM REVENDA: Licença unitária intransferível. Sem Whitelabel.</span>
+                          </li>
+                        ) : (
+                          <li className="flex items-start gap-2 text-emerald-400 font-bold bg-emerald-950/10 p-2 rounded border border-emerald-950/20 mt-1">
+                            <CheckCircle className="w-3.5 h-3.5 relative top-0.5 shrink-0 text-emerald-400" />
+                            <span>Vínculo ativo de recorrência direta com você.</span>
+                          </li>
+                        )}
+                        <li className="flex items-center gap-2 text-gray-500">
+                          <CheckCircle className="w-3.5 h-3.5 text-gray-700" /> Suporte Técnico NDS 24h
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div className="pt-5 mt-5 border-t border-gray-800">
+                      <button
+                        onClick={() => {
+                          showAppAlert(`Plano "${plan.name}" pré-selecionado com sucesso! O faturamento será configurado sob medida pelo time operacional NDS.`, "Mensalidade Habilitada", "success");
+                        }}
+                        className={`w-full py-2 rounded-lg font-bold text-xs uppercase transition-all tracking-wider font-mono cursor-pointer ${
+                          plan.isPopular 
+                            ? "bg-[#10B981] hover:bg-emerald-500 text-black font-semibold text-xs" 
+                            : "bg-[#1F2937] hover:bg-gray-800 text-white border border-gray-700"
+                        }`}
+                      >
+                        Ativar {plan.name.split(" ")[0]}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            /* PREDEFINED CLIENT UNLOCK/ASSIGN PANEL */
+            <div className="space-y-4 font-mono text-xs">
+              <div className="bg-[#0E1524] p-4.5 rounded-xl border border-gray-800 space-y-2">
+                <h4 className="text-white font-bold text-xs uppercase tracking-wide flex items-center gap-1.5">
+                  <UserCheck className="w-4 h-4 text-emerald-400" /> Central de Liberação Rápida de Clientes (NDS Central)
+                </h4>
+                <p className="text-gray-400 text-[11px] leading-relaxed">
+                  Ganhe velocidade operacional! Com esta ferramenta integrada, você pode buscar qualquer cliente e 
+                  <strong> liberar o acesso dele instantaneamente</strong>, selecionando qual plano/modelo de licenciamento ele adotou. Isso dispara a ativação 
+                  automática no banco local e atualiza os dashboards de faturamento em tempo real.
+                </p>
+              </div>
+
+              {registeredClients.length === 0 ? (
+                <div className="p-8 text-center text-gray-500 border border-dashed border-gray-800 rounded-xl">
+                  Nenhum cliente pré-definido ou cadastrado encontrado. Cadastre um novo estabelecimento na aba "REGISTRO ADMINISTRATIVO" primeiro!
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {registeredClients.map((client) => {
+                    return (
+                      <div key={client.id} className="bg-[#0E1524] border border-gray-800 hover:border-amber-500/30 transition-all rounded-xl p-4 flex flex-col justify-between space-y-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] uppercase font-bold text-gray-500 font-mono">ID: {client.id}</span>
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${
+                              client.paymentStatus === "Pago" 
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 font-bold" 
+                                : "bg-amber-500/10 text-amber-400 border-amber-500/20 font-bold"
+                            }`}>
+                              STATUS: {(client.paymentStatus || "Pendente").toUpperCase()}
+                            </span>
+                          </div>
+
+                          <h5 className="text-white font-bold text-[13px] tracking-wide font-sans">{client.tradingName}</h5>
+                          
+                          <div className="grid grid-cols-2 gap-2 text-gray-400 text-[10px] bg-[#090D14] p-2.5 rounded-lg border border-gray-900 font-mono">
+                            <div>📱 WhatsApp: <span className="text-white font-bold">{client.whatsapp}</span></div>
+                            <div>⏰ Período: <span className="text-white">{client.openTime}h - {client.closeTime}h</span></div>
+                            <div className="col-span-2 pt-1.5 border-t border-gray-800/40">
+                              🎛️ Plano Ativo: <span className="text-amber-400 font-bold">{client.planName || "Nenhum Ativo"}</span> {client.paymentValue ? `(R$ ${client.paymentValue})` : ""}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* SELECT PLAN & ACTION BUTTON */}
+                        <div className="space-y-3 pt-2.5 border-t border-gray-850">
+                          <span className="text-[10px] font-bold text-gray-300 uppercase block font-mono">Selecione o plano de liberação de faturamento:</span>
+                          <div className="grid grid-cols-3 gap-1.5">
+                            {SUBSCRIPTION_PLANS.map((p) => (
+                              <button
+                                type="button"
+                                key={p.id}
+                                onClick={() => {
+                                  // Instantly update this specific client's plan locally
+                                  const updated = registeredClients.map(c => {
+                                    if (c.id === client.id) {
+                                      const numericVal = p.price.replace("R$", "").trim() + ",00";
+                                      return {
+                                        ...c,
+                                        planId: p.id,
+                                        planName: p.name,
+                                        paymentValue: numericVal,
+                                        paymentStatus: "Pago" as const
+                                      };
+                                    }
+                                    return c;
+                                  });
+                                  setRegisteredClients(updated);
+                                  localStorage.setItem("rv_registered_clients", JSON.stringify(updated));
+                                  
+                                  // Log simulated terminal
+                                  const timeStr = new Date().toLocaleTimeString("pt-BR");
+                                  setSimulatedTerminalLogs(prev => [
+                                    `[${timeStr}] 🔑 [Licenciamento] Ativando faturamento rápido para '${client.tradingName}'...`,
+                                    `[${timeStr}] 📡 [n8n Webhook] Disparando requisição POST para '${clientWebhookUrl}' com fone '${client.whatsapp}' e plano '${p.name}'.`,
+                                    `[${timeStr}] 👑 [Sucesso] Acesso Liberado para '${client.tradingName}' sob o plano '${p.name}'!`,
+                                    ...prev
+                                  ]);
+
+                                  showAppAlert(
+                                    `✓ O acesso do cliente "${client.tradingName}" foi liberado com sucesso sob o plano "${p.name}" (${p.price}/${p.period})! O webhook n8n foi sincronizado.`,
+                                    "Licença Ativada",
+                                    "success"
+                                  );
+                                }}
+                                className={`p-2 rounded-lg border text-[10px] text-center transition-all cursor-pointer flex flex-col justify-center items-center font-bold ${
+                                  client.planId === p.id
+                                    ? "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/50 font-extrabold shadow-sm"
+                                    : "bg-[#090D14] text-gray-400 border-gray-800 hover:text-white hover:border-gray-700"
+                                }`}
+                              >
+                                <span>{p.name.split(" ")[0]}</span>
+                                <span className="pt-0.5 text-[9px] text-emerald-400">{p.price}</span>
+                              </button>
+                            ))}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Action to simulate manual webhook override
+                              const timeStr = new Date().toLocaleTimeString("pt-BR");
+                              setSimulatedTerminalLogs(prev => [
+                                `[${timeStr}] ⚡ [Ação Operacional] Forçando disparo manual de sinal operacional da NDS para ${client.tradingName}...`,
+                                `[${timeStr}] 📡 [n8n Webhook] Payload enviado para: ${clientWebhookUrl} | Status 200 OK.`,
+                                ...prev
+                              ]);
+                              showAppAlert(
+                                `Sinal de liberação operacional reenviado com sucesso para o WhatsApp ${client.whatsapp} e para o fluxo n8n ativo!`,
+                                "Sinal Forçado Disparado",
+                                "success"
+                              );
+                            }}
+                            className="w-full bg-[#1F2937] hover:bg-gray-800 transition-colors border border-gray-700 py-2 rounded-lg text-[10px] text-center font-bold flex items-center justify-center gap-1.5 cursor-pointer uppercase text-white"
+                          >
+                            <Send className="w-3 h-3 text-emerald-400" /> Disparar Sinal de Ativação Manual (n8n Webhook)
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {/* INTEGRATIONS SYNC (N8N & SUPABASE WEBHOOK CONTROLLER) */}
@@ -2613,7 +2819,7 @@ export default function App() {
                                       {client.paymentStatus || "Pendente"}
                                     </button>
                                   </div>
-                                  <p className="text-[9px] text-gray-500 pt-0.5">Registrado: {new Date(client.createdAt).toLocaleDateString("pt-BR")}</p>
+                                  <p className="text-[9px] text-gray-500 pt-0.5">Registrado: {formatDate(client.createdAt) || "Recente"}</p>
                                 </div>
                                 <button
                                   type="button"
@@ -2671,7 +2877,7 @@ export default function App() {
                       <p className="text-[10px] uppercase tracking-wider text-gray-400 font-mono font-bold">Expectativa Mensal</p>
                       <h3 className="text-[19px] font-bold text-violet-400 font-mono mt-1">
                         R$ {registeredClients.reduce((acc, c) => {
-                          const str = (c.paymentValue || "149,00").replace(",", ".");
+                          const str = String(c.paymentValue || "149,00").replace(",", ".");
                           return acc + (parseFloat(str) || 149.00);
                         }, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </h3>
@@ -2689,7 +2895,7 @@ export default function App() {
                       <h3 className="text-[19px] font-bold text-emerald-400 font-mono mt-1">
                         R$ {registeredClients.reduce((acc, c) => {
                           if (c.paymentStatus !== "Pago") return acc;
-                          const str = (c.paymentValue || "149,00").replace(",", ".");
+                          const str = String(c.paymentValue || "149,00").replace(",", ".");
                           return acc + (parseFloat(str) || 149.00);
                         }, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </h3>
@@ -2707,7 +2913,7 @@ export default function App() {
                       <h3 className="text-[19px] font-bold text-yellow-400 font-mono mt-1">
                         R$ {registeredClients.reduce((acc, c) => {
                           if (c.paymentStatus !== "Pendente") return acc;
-                          const str = (c.paymentValue || "149,00").replace(",", ".");
+                          const str = String(c.paymentValue || "149,00").replace(",", ".");
                           return acc + (parseFloat(str) || 149.00);
                         }, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </h3>
@@ -2725,7 +2931,7 @@ export default function App() {
                       <h3 className="text-[19px] font-bold text-red-400 font-mono mt-1">
                         R$ {registeredClients.reduce((acc, c) => {
                           if (c.paymentStatus !== "Atrasado") return acc;
-                          const str = (c.paymentValue || "149,00").replace(",", ".");
+                          const str = String(c.paymentValue || "149,00").replace(",", ".");
                           return acc + (parseFloat(str) || 149.00);
                         }, 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </h3>
