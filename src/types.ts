@@ -88,6 +88,8 @@ export interface NDSClient {
   isicAuthorizedCameras?: string[];
   isicUserCredentials?: string;
   authorizedUsers?: AuthorizedUser[];
+  cameras?: CameraFeed[];
+  supabaseUrl?: string;
 }
 
 export interface AuthorizedUser {

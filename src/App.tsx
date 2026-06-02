@@ -4,6 +4,7 @@ import {
   Activity, 
   Wifi, 
   Tv, 
+  Video,
   Clock, 
   Lock, 
   Unlock, 
@@ -292,7 +293,22 @@ export default function App() {
   const [clientPaymentValue, setClientPaymentValue] = useState("299,00");
   const [clientPaymentMethod, setClientPaymentMethod] = useState<"Pix" | "Boleto" | "Cartão" | "Dinheiro">("Pix");
   const [clientDueDate, setClientDueDate] = useState("10");
+  
+  // Dynamic cameras being configured during client registration
+  const [clientRegCameras, setClientRegCameras] = useState<{ id: string; name: string; location: string; imageUrl: string; status: "ACTIVE" | "ALERT"; fps: number; noiseLevel: number }[]>([
+    { id: "rcam-1", name: "Câmera 01 - Entrada Principal", location: "Entrada Principal", imageUrl: "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=600&auto=format&fit=crop", status: "ACTIVE", fps: 15, noiseLevel: 10 },
+    { id: "rcam-2", name: "Câmera 02 - Portão Garagem", location: "Portão Garagem", imageUrl: "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=600&auto=format&fit=crop", status: "ACTIVE", fps: 18, noiseLevel: 12 },
+    { id: "rcam-3", name: "Câmera 03 - Muro Fundos", location: "Muro Fundos", imageUrl: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&auto=format&fit=crop", status: "ACTIVE", fps: 12, noiseLevel: 8 }
+  ]);
+  const [newRegCamName, setNewRegCamName] = useState("");
+  const [newRegCamLocation, setNewRegCamLocation] = useState("Entrada Principal");
+
+  // Inputs for adding a camera within the Inspected Client full file (Ficha) modal
+  const [newInspectedCamName, setNewInspectedCamName] = useState("");
+  const [newInspectedCamLocation, setNewInspectedCamLocation] = useState("Entrada Principal");
+
   const [adminSubTab, setAdminSubTab] = useState<"cadastro" | "financeiro" | "escala_500" | "isic_acessos">("cadastro");
+  const [currentViewingClientId, setCurrentViewingClientId] = useState<string>("all_feeds");
   const [merchantSearchQuery, setMerchantSearchQuery] = useState("");
   const [inspectedClient, setInspectedClient] = useState<NDSClient | null>(null);
   const [isicSelectedClientId, setIsicSelectedClientId] = useState("");
@@ -413,7 +429,24 @@ export default function App() {
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const selectedFeed = feeds.find((f) => f.id === selectedFeedId) || feeds[0];
+  
+  // Resolve client and its cameras/live streams for dynamic dashboard viewing
+  const selectedViewingClient = registeredClients.find((c) => c.id === currentViewingClientId) || null;
+  const activeViewingCameras = (selectedViewingClient && selectedViewingClient.cameras && selectedViewingClient.cameras.length > 0)
+    ? selectedViewingClient.cameras
+    : feeds;
+
+  const selectedFeed = activeViewingCameras.find((f) => f.id === selectedFeedId) || activeViewingCameras[0] || feeds[0];
+
+  // Sync selectedFeedId when the client selection changes to prevent looking at incorrect channels
+  useEffect(() => {
+    if (activeViewingCameras && activeViewingCameras.length > 0) {
+      const belongs = activeViewingCameras.some(f => f.id === selectedFeedId);
+      if (!belongs) {
+        setSelectedFeedId(activeViewingCameras[0].id);
+      }
+    }
+  }, [currentViewingClientId, activeViewingCameras, selectedFeedId]);
 
   // Sync state to local storage on changes using safeStorage helper
   useEffect(() => {
@@ -602,44 +635,80 @@ export default function App() {
 
       const data = await response.json();
       
+      // Determine the client that owns this camera or is currently selected for viewing
+      const actualClient = registeredClients.find(c => {
+        return c.cameras?.some(cam => cam.id === selectedFeed.id || cam.name === camName) || c.id === currentViewingClientId;
+      }) || selectedViewingClient || registeredClients[0];
+
       // Determine if the analysis triggered an alert & if it matches active schedule windows
       let wasSentToWhatsApp = false;
       let matchingSchedules = schedules.filter(s => s.enabled && isTimeInBetween(systemMockTime, s.startTime, s.endTime));
 
       if (data.status === "ALERTA") {
-        if (matchingSchedules.length > 0) {
-          wasSentToWhatsApp = true;
-          // Spawn one simulated notification for each target number
-          matchingSchedules.forEach(schedule => {
-            schedule.phoneNumbers.forEach(phoneNumber => {
-              const whatsappMsg = `🔔 *ROBUST VISION - NOTIFICAÇÃO INTELIGENTE*\n━━━━━━━━━━━━━━━━━━━━━\n🚨 *ALERTA DE SEGURANÇA CFTV*\n📍 *Dispositivo:* ${camName}\n⏰ *Hora Simulada:* ${systemMockTime}\n⚠️ *Diagnóstico:* ${data.reason}\n📈 *Integração:* iSIC LITE ATIVA\n━━━━━━━━━━━━━━━━━━━━━\n_Verifique as imagens imediatamente no seu DVR._`;
-              
-              setWhatsappNotifications(prev => [
-                {
-                  id: "wa-" + Date.now() + Math.random().toString(36).substr(2, 5),
-                  to: phoneNumber,
-                  message: whatsappMsg,
-                  timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
-                },
-                ...prev
-              ]);
-            });
-          });
+        const clientNameWithFallback = actualClient ? actualClient.tradingName : "Monitoramento Geral";
+        const clientPhoneWithFallback = actualClient ? actualClient.whatsapp : "";
 
-          // Update stats
-          setStats(prev => ({
-            ...prev,
-            totalDetections: prev.totalDetections + 1,
-            realThreats: prev.realThreats + 1,
-          }));
-        } else {
-          // Alert happened but outside scheduled hours
-          setStats(prev => ({
-            ...prev,
-            totalDetections: prev.totalDetections + 1,
-            realThreats: prev.realThreats + 1,
-          }));
+        // Format clean WhatsApp template including the real-time photo URL so they can see the client image
+        const whatsappMsg = `🚨 *ROBUST VISION - MONITORAMENTO INTELIGENTE*\n━━━━━━━━━━━━━━━━━━━━━\n🏢 *Cliente:* ${clientNameWithFallback}\n📍 *Câmera:* ${camName}\n🕒 *Medição:* ${new Date().toLocaleTimeString("pt-BR")}\n⚠️ *Fato:* ${data.reason}\n📷 *Imagem:* ${sourceImage}\n━━━━━━━━━━━━━━━━━━━━━\n_Disparado via Robust Vision Delivery API._`;
+
+        // Set of numbers to notify
+        const targetNumbers = new Set<string>();
+
+        // 1. Add matching scheduling numbers
+        matchingSchedules.forEach(schedule => {
+          schedule.phoneNumbers.forEach(phoneNumber => {
+            targetNumbers.add(phoneNumber);
+          });
+        });
+
+        // 2. ALWAYS add the customer's registered WhatsApp number from profile
+        if (clientPhoneWithFallback) {
+          targetNumbers.add(clientPhoneWithFallback);
         }
+
+        if (targetNumbers.size > 0) {
+          wasSentToWhatsApp = true;
+          targetNumbers.forEach(phoneNumber => {
+            setWhatsappNotifications(prev => [
+              {
+                id: "wa-feed-" + Date.now() + Math.random().toString(36).substr(2, 5),
+                to: phoneNumber,
+                message: whatsappMsg,
+                timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
+              },
+              ...prev
+            ]);
+          });
+        }
+
+        // 3. Post webhook alert to client's endpoint
+        const targetWebhook = (actualClient && actualClient.supabaseUrl) || clientWebhookUrl || integrationConfig.n8nWebhookUrl;
+        if (targetWebhook && targetWebhook.startsWith("http")) {
+          fetch(targetWebhook, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            mode: "cors",
+            body: JSON.stringify({
+              event: "robust_vision_event",
+              client: clientNameWithFallback,
+              phone: clientPhoneWithFallback,
+              camera: camName,
+              status: "ALERTA",
+              reason: data.reason,
+              imageUrl: sourceImage,
+              timestamp: new Date().toISOString()
+            })
+          }).catch((err) => {
+            console.error("Erro ao enviar HTTP POST para o webhook do cliente:", err);
+          });
+        }
+
+        // Update stats
+        setStats(prev => ({
+          ...prev,
+          totalDetections: prev.totalDetections + 1,
+          realThreats: prev.realThreats + 1,
+        }));
       } else {
         // Safe triggering or ignore rule (animal/wind/shadow)
         setStats(prev => ({
@@ -989,7 +1058,9 @@ export default function App() {
       paymentStatus: payload.paymentStatus as "Pago" | "Pendente" | "Atrasado",
       paymentValue: payload.paymentValue,
       paymentMethod: payload.paymentMethod as "Pix" | "Boleto" | "Cartão" | "Dinheiro",
-      dueDate: payload.dueDate
+      dueDate: payload.dueDate,
+      cameras: [...clientRegCameras],
+      supabaseUrl: postUrl
     };
 
     setRegisteredClients(prev => [newClient, ...prev]);
@@ -999,7 +1070,7 @@ export default function App() {
       success: true,
       message: "Cliente Cadastrado com Sucesso!",
       targetUrl: postUrl,
-      payload: payload
+      payload: { ...payload, cameras: clientRegCameras }
     });
 
     // Add immediate log entry
@@ -1020,6 +1091,12 @@ export default function App() {
     // Clear inputs immediately so user knows it succeeded and can do more actions
     setClientTradingName("");
     setClientWhatsApp("");
+    setNewRegCamName("");
+    setClientRegCameras([
+      { id: "rcam-1", name: "Câmera 01 - Entrada Principal", location: "Entrada Principal", imageUrl: "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=600&auto=format&fit=crop", status: "ACTIVE", fps: 15, noiseLevel: 10 },
+      { id: "rcam-2", name: "Câmera 02 - Portão Garagem", location: "Portão Garagem", imageUrl: "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=600&auto=format&fit=crop", status: "ACTIVE", fps: 18, noiseLevel: 12 },
+      { id: "rcam-3", name: "Câmera 03 - Muro Fundos", location: "Muro Fundos", imageUrl: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&auto=format&fit=crop", status: "ACTIVE", fps: 12, noiseLevel: 8 }
+    ]);
 
     try {
       console.log(`NDS Robust Vision: Posting client payload to webhook: ${postUrl}`, payload);
@@ -1370,6 +1447,17 @@ export default function App() {
     setRegisteredClients(updated);
   };
 
+  // Synchronize test camera state with newly selected client's camera collection
+  useEffect(() => {
+    if (testSelectedClientId) {
+      const selClient = registeredClients.find(c => c.id === testSelectedClientId);
+      const selCams = (selClient && selClient.cameras && selClient.cameras.length > 0) ? selClient.cameras : feeds;
+      if (selCams && selCams.length > 0) {
+        setTestSelectedCameraId(selCams[0].id);
+      }
+    }
+  }, [testSelectedClientId, registeredClients, feeds]);
+
   // Handler for custom client recognition testing alerts
   const handleTriggerTestSimulation = () => {
     const client = registeredClients.find(c => c.id === testSelectedClientId) || registeredClients[0];
@@ -1381,8 +1469,9 @@ export default function App() {
     setTestIsRunning(true);
     setTestLogLines([]);
     
-    // Choose selected camera feed
-    const camera = feeds.find(f => f.id === testSelectedCameraId) || feeds[0];
+    // Choose selected camera feed from this specific client's cameras first, with fallback to initial static feeds
+    const clientCams = (client && client.cameras && client.cameras.length > 0) ? client.cameras : feeds;
+    const camera = clientCams.find(f => f.id === testSelectedCameraId) || clientCams[0];
     const cameraName = camera ? camera.name : "Câmera 01";
 
     let statusText: "ALERTA" | "OK" = "ALERTA";
@@ -1392,19 +1481,20 @@ export default function App() {
     if (testEventType === "intruder") {
       statusText = "ALERTA";
       alertReason = "DETECÇÃO ANALÍTICA: Presença de invasor humano suspeito forçando acesso pelo perímetro murado.";
-      mediaUrl = INITIAL_FEEDS[1]?.imageUrl || "";
+      // Use 100% public, stable HTTPS image links so the user's real n8n webhook and real WhatsApp can fetch them instantly
+      mediaUrl = "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=800&auto=format&fit=crop";
     } else if (testEventType === "vehicle") {
       statusText = "ALERTA";
       alertReason = "DETECÇÃO ANALÍTICA: Veículo suspeito estacionado após horário limite de tráfego.";
-      mediaUrl = INITIAL_FEEDS[0]?.imageUrl || "";
+      mediaUrl = "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&auto=format&fit=crop";
     } else if (testEventType === "cat") {
       statusText = "OK";
       alertReason = "FILTRO INTELIGENTE: Pequeno animal (gato doméstico) identificado caminhando sobre o muro. Nenhuma ameaça humana presente.";
-      mediaUrl = INITIAL_FEEDS[2]?.imageUrl || "";
+      mediaUrl = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&auto=format&fit=crop";
     } else if (testEventType === "wind") {
       statusText = "OK";
       alertReason = "FILTRO INTELIGENTE: Oscilação de galhos devido a vento forte de tempestade. Evento de vento ignorado.";
-      mediaUrl = INITIAL_FEEDS[0]?.imageUrl || "";
+      mediaUrl = "https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=800&auto=format&fit=crop";
     }
 
     const addLog = (line: string) => {
@@ -1919,20 +2009,51 @@ export default function App() {
 
           {/* RIGHT: CAMERAS LIST GRID PANEL (5 COLS) */}
           <div id="camera_grid_pane" className="lg:col-span-5 flex flex-col bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden">
-            <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-white font-mono flex items-center gap-2">
-                  <Tv className="w-4 h-4 text-blue-400" /> Câmeras Conectadas iSIC Lite
-                </h3>
-                <p className="text-[10px] text-gray-500 mt-0.5">Clique em uma câmera para monitorar</p>
+            <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-white font-mono flex items-center gap-1.5">
+                    <Tv className="w-4 h-4 text-cyan-400 animate-pulse" /> Canais do Cliente (iSIC Lite)
+                  </h3>
+                  <p className="text-[10px] text-gray-500 mt-0.5 font-mono">Alterar cliente para ver canais específicos</p>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                  {activeViewingCameras.length} CANAIS
+                </span>
               </div>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                {feeds.length} DISPOSITIVOS
-              </span>
+
+              {/* DYNAMIC CLIENT MONITOR SELECTOR */}
+              <div className="space-y-1.5 p-2 bg-[#090D14] border border-gray-800 rounded-xl">
+                <label className="text-[9px] text-[#10B981] font-mono uppercase font-bold block">
+                  🏢 Selecionar Cliente p/ Monitoramento:
+                </label>
+                <select
+                  value={currentViewingClientId}
+                  onChange={(e) => {
+                    setCurrentViewingClientId(e.target.value);
+                    setLastAnalysisResult(null);
+                    showAppAlert(`Carregado painel de monitoramento do cliente: ${e.target.value === "all_feeds" ? "Feed Geral" : registeredClients.find(c => c.id === e.target.value)?.tradingName}`, "Monitorando Cliente", "info");
+                  }}
+                  className="w-full bg-[#111827] border border-gray-800 rounded px-2.5 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+                >
+                  <option value="all_feeds">🚨 FEED DE CANAIS SÃO SANDBOX (GERAL)</option>
+                  {registeredClients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      🏢 {client.tradingName.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+                {selectedViewingClient && (
+                  <div className="flex items-center justify-between text-[9px] text-gray-400 font-mono pt-1">
+                    <span>📞 {selectedViewingClient.whatsapp}</span>
+                    <span className="text-[#10B981]">🕒 {selectedViewingClient.openTime}h - {selectedViewingClient.closeTime}h</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="p-4 divide-y divide-gray-800 overflow-y-auto max-h-[440px] space-y-3 flex-1">
-              {feeds.map((feed) => {
+              {activeViewingCameras.map((feed) => {
                 const isSelected = feed.id === selectedFeedId;
                 return (
                   <div 
@@ -1952,6 +2073,7 @@ export default function App() {
                           src={feed.imageUrl} 
                           alt={feed.name} 
                           className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-[8px] font-mono text-gray-600">
@@ -1962,7 +2084,7 @@ export default function App() {
                       {/* Live status badge */}
                       <span className={`absolute top-1 left-1 px-1 py-0.2 rounded font-mono text-[7px] font-extrabold ${
                         feed.status === "ALERT" 
-                          ? "bg-red-600 text-white" 
+                          ? "bg-red-600 text-white animate-pulse" 
                           : "bg-[#10B981]/90 text-black"
                       }`}>
                         {feed.status === "ALERT" ? "ALERTA" : "LIVE"}
@@ -3207,6 +3329,41 @@ export default function App() {
                       </div>
                     </div>
 
+                    {/* SHORTCUTS FOR PREDEFINED MONITOR SHUTTER TIMES */}
+                    <div className="space-y-1 bg-[#111827] border border-gray-800 p-2.5 rounded-lg">
+                      <label className="text-[10px] text-gray-400 uppercase font-bold block mb-1">⚡ Atalhos de Horários de Monitoramento:</label>
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => { setClientOpenTime("08:00"); setClientCloseTime("18:00"); }}
+                          className="px-2 py-1 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/50 border border-cyan-800/40 text-[9px] font-bold rounded cursor-pointer transition-all"
+                        >
+                          💼 Comercial (08h às 18h)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setClientOpenTime("18:00"); setClientCloseTime("08:00"); }}
+                          className="px-2 py-1 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50 border border-amber-800/40 text-[9px] font-bold rounded cursor-pointer transition-all"
+                        >
+                          🌙 Noturno Novo (18h às 08h)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setClientOpenTime("20:00"); setClientCloseTime("06:00"); }}
+                          className="px-2 py-1 bg-red-950/40 text-red-300 hover:bg-red-900/50 border border-red-800/40 text-[9px] font-bold rounded cursor-pointer transition-all"
+                        >
+                          🔥 Noturno Estendido (20h às 06h)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setClientOpenTime("00:00"); setClientCloseTime("23:59"); }}
+                          className="px-2 py-1 bg-emerald-950/40 text-emerald-300 hover:bg-emerald-900/50 border border-emerald-800/40 text-[9px] font-bold rounded cursor-pointer transition-all"
+                        >
+                          🚨 24 Horas (Ininterrupto)
+                        </button>
+                      </div>
+                    </div>
+
                     {/* SEÇÃO DE PAGAMENTO E ASSINATURA */}
                     <div className="pt-3 border-t border-[#1E293B] space-y-3.5">
                       <p className="text-emerald-400 text-[10px] uppercase font-bold flex items-center gap-1.5 font-mono">
@@ -3289,6 +3446,112 @@ export default function App() {
                             <option value="Atrasado">Atrasado</option>
                           </select>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* CAMERA CHANNELS CONFIGURATION FOR THIS SPECIFIC DVR */}
+                    <div className="pt-3 border-t border-[#1E293B] space-y-3">
+                      <p className="text-cyan-400 text-[10px] uppercase font-bold flex items-center gap-1.5 font-mono">
+                        <Video className="w-3.5 h-3.5" /> 📹 Canais de Câmeras do DVR (Ficha Individual)
+                      </p>
+
+                      <div className="bg-[#090D14] p-3 border border-gray-850 rounded-xl space-y-2.5">
+                        <div className="grid grid-cols-2 gap-2 text-[10px]">
+                          <div>
+                            <label className="text-gray-400 font-bold block mb-1">Nome do Canal/Câmera</label>
+                            <input
+                              type="text"
+                              value={newRegCamName}
+                              onChange={(e) => setNewRegCamName(e.target.value)}
+                              placeholder="Ex: Câmera 04 - Recepção"
+                              className="w-full bg-[#111827] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-cyan-500 text-xs"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  // trigger add
+                                }
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-gray-400 font-bold block mb-1">Localização/Ângulo</label>
+                            <select
+                              value={newRegCamLocation}
+                              onChange={(e) => setNewRegCamLocation(e.target.value)}
+                              className="w-full bg-[#111827] text-white border border-gray-800 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-cyan-500 text-xs font-mono"
+                            >
+                              <option value="Entrada Principal">Entrada Principal</option>
+                              <option value="Portão Garagem">Portão Garagem</option>
+                              <option value="Corredor Lateral">Corredor Lateral</option>
+                              <option value="Muro Fundos">Muro Fundos</option>
+                              <option value="Área Interna">Área Interna</option>
+                              <option value="Área de Parqueada">Área de Parqueada</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!newRegCamName.trim()) {
+                              showAppAlert("Digite um nome para a câmera.", "Campo Vazio", "warn");
+                              return;
+                            }
+                            // Assign proper public Unsplash preview images for high-reliability WhatsApp simulation deliveries
+                            let camUrl = "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=600";
+                            if (newRegCamLocation.includes("Garagem")) camUrl = "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=600";
+                            else if (newRegCamLocation.includes("Fundos") || newRegCamLocation.includes("Lateral")) camUrl = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600";
+                            else if (newRegCamLocation.includes("Parqueada")) camUrl = "https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=600";
+                            else if (newRegCamLocation.includes("Interna")) camUrl = "https://images.unsplash.com/photo-1558002038-1055907df827?w=600";
+
+                            const newCam = {
+                              id: "rcam-" + Date.now(),
+                              name: newRegCamName.trim(),
+                              location: newRegCamLocation,
+                              imageUrl: camUrl,
+                              status: "ACTIVE" as const,
+                              fps: 15,
+                              noiseLevel: 10
+                            };
+                            setClientRegCameras(prev => [...prev, newCam]);
+                            setNewRegCamName("");
+                            showAppAlert(`Câmera "${newCam.name}" adicionada ao rascunho de cadastro do cliente!`, "Câmera Adicionada", "info");
+                          }}
+                          className="w-full py-2 bg-cyan-950 text-cyan-400 hover:bg-cyan-900 border border-cyan-500/20 rounded-md font-bold text-[10px] uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <Plus className="w-3.5 h-3.5 text-cyan-400" /> Adicionar Câmera/Canal ao DVR
+                        </button>
+                      </div>
+
+                      {/* Configured cameras listing draft status */}
+                      <div className="space-y-1.5">
+                        <label className="text-gray-400 text-[10px] uppercase font-bold block">
+                          Câmeras Selecionadas para este DVR ({clientRegCameras.length}):
+                        </label>
+                        
+                        {clientRegCameras.length === 0 ? (
+                          <p className="text-[10px] text-gray-500 italic block">Selecione/adicione canais acima ou o DVR será cadastrado sem câmeras inicialmente.</p>
+                        ) : (
+                          <div className="max-h-[140px] overflow-y-auto space-y-1 pr-1 bg-[#090D14]/50 border border-gray-850 p-2 rounded-lg">
+                            {clientRegCameras.map((cam, idx) => (
+                              <div key={cam.id} className="flex items-center justify-between bg-[#111827] border border-gray-800 p-1.5 px-2.5 rounded-md text-[10px]">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-cyan-400 font-bold font-mono">CH{idx + 1}</span>
+                                  <span className="text-white font-semibold truncate">{cam.name}</span>
+                                  <span className="text-gray-500 text-[9px] font-mono">({cam.location})</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setClientRegCameras(prev => prev.filter(c => c.id !== cam.id))}
+                                  className="text-red-400 hover:text-red-300 p-1 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
+                                  title="Remover câmera"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -3641,6 +3904,146 @@ export default function App() {
                         </div>
                       </div>
 
+                    </div>
+
+                    {/* GERENCIAMENTO DE CANAIS DE CÂMERAS DO CLIENTE */}
+                    <div className="mt-4 pt-4 border-t border-gray-850 bg-[#090D14]/70 p-4 rounded-xl border border-gray-800">
+                      <div className="flex items-center justify-between mb-3.5">
+                        <div className="flex items-center gap-2 text-white font-bold text-xs uppercase tracking-wider">
+                          <Video className="w-4 h-4 text-cyan-400" />
+                          <span>Configuração de Câmeras Customizadas do Cliente (DVR Ativo)</span>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded font-mono font-bold">
+                          {(inspectedClient.cameras || []).length} Canais Associados
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-gray-400 leading-relaxed mb-4">
+                        Adicione, remova ou edite os canais do DVR vinculados a este comércio de forma individual. Cada câmera adicionada aqui aparecerá automaticamente no Simulador CFTV e pode disparar webhooks n8n com as imagens públicas do evento.
+                      </p>
+
+                      {/* LISTAGEM DAS CÂMERAS DO CLIENTE */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                        {(inspectedClient.cameras || []).length === 0 ? (
+                          <div className="col-span-full text-center py-6 text-gray-500 border border-dashed border-gray-800 rounded-lg bg-gray-900/30">
+                            <Sliders className="w-6 h-6 mx-auto text-gray-700 mb-1.5" />
+                            <p className="text-[10px]">Este cliente não possui câmeras vinculadas especificamente.</p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const defaultCams = [
+                                  { id: "cam-" + Date.now() + "1", name: "Câmera 01 - Entrada", location: "Entrada Principal", imageUrl: "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=600", status: "ACTIVE" as const, fps: 15, noiseLevel: 10 },
+                                  { id: "cam-" + Date.now() + "2", name: "Câmera 02 - Garagem", location: "Portão Garagem", imageUrl: "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=600", status: "ACTIVE" as const, fps: 18, noiseLevel: 12 },
+                                  { id: "cam-" + Date.now() + "3", name: "Câmera 03 - Muro Fundos", location: "Muro Fundos", imageUrl: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600", status: "ACTIVE" as const, fps: 12, noiseLevel: 8 }
+                                ];
+                                const updated = { ...inspectedClient, cameras: defaultCams };
+                                setRegisteredClients(prev => prev.map(c => c.id === inspectedClient.id ? updated : c));
+                                setInspectedClient(updated);
+                                showAppAlert("Câmeras padrão adicionadas a esta ficha!", "Sucesso", "success");
+                              }}
+                              className="mt-2 px-3 py-1 bg-cyan-900/40 text-cyan-300 border border-cyan-800/40 hover:bg-cyan-900/70 text-[9px] font-bold rounded cursor-pointer uppercase tracking-wider"
+                            >
+                              ⚙️ Inicializar Canais Padrão (3 Canais)
+                            </button>
+                          </div>
+                        ) : (
+                          (inspectedClient.cameras || []).map((cam, idx) => (
+                            <div key={cam.id} className="p-3 bg-[#090D14] border border-gray-800 rounded-lg flex flex-col justify-between">
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-white font-bold text-[11px] truncate">{cam.name}</span>
+                                  <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.2 rounded border border-cyan-500/15">
+                                    CH {idx + 1}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-gray-500 font-mono">Local: {cam.location}</p>
+                                <div className="mt-2 h-16 w-full rounded overflow-hidden relative border border-gray-850">
+                                  <img src={cam.imageUrl} alt={cam.name} className="w-full h-full object-cover opacity-60" referrerPolicy="no-referrer" />
+                                  <span className="absolute bottom-1 right-1 px-1 bg-black/60 text-emerald-400 font-mono text-[8px] font-bold uppercase rounded">
+                                    ONLINE • {cam.fps} FPS
+                                  </span>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  // delete camera (remove)
+                                  const updatedCams = (inspectedClient.cameras || []).filter(c => c.id !== cam.id);
+                                  const updated = { ...inspectedClient, cameras: updatedCams };
+                                  setRegisteredClients(prev => prev.map(c => c.id === inspectedClient.id ? updated : c));
+                                  setInspectedClient(updated);
+                                }}
+                                className="mt-3.5 w-full py-1 bg-red-950/40 hover:bg-red-950/80 text-red-400 text-[10px] uppercase font-bold rounded border border-red-500/15 cursor-pointer text-center transition-colors"
+                              >
+                                Excluir Canal
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {/* MINI FORM TO ADD CAMERA */}
+                      <div className="bg-gray-900/40 p-3.5 border border-dashed border-gray-800 rounded-lg flex flex-col md:flex-row items-end gap-3.5">
+                        <div className="flex-1 space-y-1.5 w-full">
+                          <label className="text-gray-400 text-[10px] uppercase font-bold block">Adicionar Novo Canal/Câmera a este Cliente:</label>
+                          <input
+                            type="text"
+                            value={newInspectedCamName}
+                            onChange={(e) => setNewInspectedCamName(e.target.value)}
+                            placeholder="Ex: Câmera de Vigilância Lousa"
+                            className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                          />
+                        </div>
+                        <div className="w-full md:w-[220px] space-y-1.5">
+                          <label className="text-gray-400 text-[10px] uppercase font-bold block">Ângulo / Categoria</label>
+                          <select
+                            value={newInspectedCamLocation}
+                            onChange={(e) => setNewInspectedCamLocation(e.target.value)}
+                            className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
+                          >
+                            <option value="Entrada Principal">Entrada Principal</option>
+                            <option value="Portão Garagem">Portão Garagem</option>
+                            <option value="Corredor Lateral">Corredor Lateral</option>
+                            <option value="Muro Fundos">Muro Fundos</option>
+                            <option value="Área Interna">Área Interna</option>
+                            <option value="Área de Parqueada">Área de Parqueada</option>
+                          </select>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!newInspectedCamName.trim()) {
+                              showAppAlert("Digite o nome da câmera.", "Nome Vazio", "warn");
+                              return;
+                            }
+                            let camUrl = "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=600";
+                            if (newInspectedCamLocation.includes("Garagem")) camUrl = "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=600";
+                            else if (newInspectedCamLocation.includes("Fundos") || newInspectedCamLocation.includes("Lateral")) camUrl = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600";
+                            else if (newInspectedCamLocation.includes("Parqueada")) camUrl = "https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=600";
+                            else if (newInspectedCamLocation.includes("Interna")) camUrl = "https://images.unsplash.com/photo-1558002038-1055907df827?w=600";
+
+                            const newCam = {
+                              id: "cam-" + Date.now(),
+                              name: newInspectedCamName.trim(),
+                              location: newInspectedCamLocation,
+                              imageUrl: camUrl,
+                              status: "ACTIVE" as const,
+                              fps: 15,
+                              noiseLevel: 10
+                            };
+
+                            const updatedCams = [...(inspectedClient.cameras || []), newCam];
+                            const updated = { ...inspectedClient, cameras: updatedCams };
+                            setRegisteredClients(prev => prev.map(c => c.id === inspectedClient.id ? updated : c));
+                            setInspectedClient(updated);
+                            setNewInspectedCamName("");
+                            showAppAlert(`Câmera "${newCam.name}" vinculada ao DVR do cliente com sucesso!`, "Câmera Adicionada", "success");
+                          }}
+                          className="px-5 py-2 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 text-white font-bold rounded font-mono text-[11px] uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 w-full md:w-auto"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Vincular Câmera
+                        </button>
+                      </div>
                     </div>
 
                     {/* STAFF / AUTHORIZED USERS SEGMENT */}
@@ -5471,11 +5874,15 @@ export default function App() {
                       onChange={(e) => setTestSelectedCameraId(e.target.value)}
                       className="w-full bg-[#111827] border border-gray-800 rounded-lg p-2 text-xs font-mono text-white focus:outline-none focus:border-[#10B981]/50 cursor-pointer"
                     >
-                      {feeds.map((feed) => (
-                        <option key={feed.id} value={feed.id}>
-                          {feed.name}
-                        </option>
-                      ))}
+                      {(() => {
+                        const selClient = registeredClients.find(c => c.id === testSelectedClientId);
+                        const selCams = (selClient && selClient.cameras && selClient.cameras.length > 0) ? selClient.cameras : feeds;
+                        return selCams.map((feed, fIdx) => (
+                          <option key={feed.id} value={feed.id}>
+                            CH {fIdx + 1}: {feed.name}
+                          </option>
+                        ));
+                      })()}
                     </select>
                   </div>
 
