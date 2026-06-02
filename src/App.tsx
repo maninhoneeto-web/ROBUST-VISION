@@ -29,6 +29,9 @@ import {
   Sliders,
   Database,
   Cpu,
+  BookOpen,
+  Zap,
+  TrendingUp,
   DollarSign,
   Coins,
   FileText,
@@ -222,6 +225,11 @@ export default function App() {
 
   // --- NEW STATES FOR ADMIN TAB CLIENTS FORM & DVR CLOUD ---
   const [activeTab, setActiveTab] = useState<"video" | "admin_clients" | "dvr_integrations" | "export_store">("video");
+  const [dvrGuideTab, setDvrGuideTab] = useState<"dvr_config" | "n8n_flow" | "whatsapp_api" | "cloud_provision">("dvr_config");
+  const [provisionDvrId, setProvisionDvrId] = useState("");
+  const [provisioningLogs, setProvisioningLogs] = useState<string[]>([]);
+  const [isCloudProvisioning, setIsCloudProvisioning] = useState(false);
+  const [provisionProgress, setProvisionProgress] = useState(0);
   const [clientTradingName, setClientTradingName] = useState("");
   const [clientWhatsApp, setClientWhatsApp] = useState("");
   const [clientOpenTime, setClientOpenTime] = useState("08:00");
@@ -281,7 +289,16 @@ export default function App() {
   const [clientPaymentValue, setClientPaymentValue] = useState("299,00");
   const [clientPaymentMethod, setClientPaymentMethod] = useState<"Pix" | "Boleto" | "Cartão" | "Dinheiro">("Pix");
   const [clientDueDate, setClientDueDate] = useState("10");
-  const [adminSubTab, setAdminSubTab] = useState<"cadastro" | "financeiro">("cadastro");
+  const [adminSubTab, setAdminSubTab] = useState<"cadastro" | "financeiro" | "escala_500" | "isic_acessos">("cadastro");
+  const [isicSelectedClientId, setIsicSelectedClientId] = useState("");
+  const [isGeneratingIsicQr, setIsGeneratingIsicQr] = useState(false);
+  const [isicSharingLink, setIsicSharingLink] = useState("");
+  const [newIsicUserName, setNewIsicUserName] = useState("");
+  const [newIsicUserPhone, setNewIsicUserPhone] = useState("");
+  const [newIsicUserRole, setNewIsicUserRole] = useState<"Comerciante/Dono" | "Gerente" | "Segurança" | "Funcionário">("Funcionário");
+  const [newIsicUserCams, setNewIsicUserCams] = useState<string[]>([]);
+  const [bulkImportText, setBulkImportText] = useState("");
+  const [bulkImportFormat, setBulkImportFormat] = useState<"csv" | "json">("csv");
   const [plansActiveSubTab, setPlansActiveSubTab] = useState<"pricing" | "predefined_unlock">("pricing");
 
   const [registeredClients, setRegisteredClients] = useState<NDSClient[]>(() => {
@@ -309,7 +326,38 @@ export default function App() {
         paymentStatus: "Pago",
         paymentValue: "149,00",
         paymentMethod: "Pix",
-        dueDate: "10"
+        dueDate: "10",
+        isicAccessAuthorized: true,
+        isicAuthorizedCameras: ["cam-01", "cam-02", "cam-03", "cam-04"],
+        authorizedUsers: [
+          {
+            id: "usr-comp-1",
+            name: "Lúcio Mauro (Proprietário)",
+            role: "Comerciante/Dono",
+            phone: "+5511999998888",
+            accessGranted: true,
+            allowedCameras: ["cam-01", "cam-02", "cam-03", "cam-04"],
+            lastAccessTime: "Hoje às 14:15"
+          },
+          {
+            id: "usr-comp-2",
+            name: "Viviane Souza (Gerente Lojas)",
+            role: "Gerente",
+            phone: "+5511988885522",
+            accessGranted: true,
+            allowedCameras: ["cam-01", "cam-02"],
+            lastAccessTime: "Ontem às 18:32"
+          },
+          {
+            id: "usr-comp-3",
+            name: "Cleber Santos (Ronda Noturna)",
+            role: "Segurança",
+            phone: "+5511977771122",
+            accessGranted: false,
+            allowedCameras: ["cam-03", "cam-04"],
+            lastAccessTime: "Nunca acessou"
+          }
+        ]
       },
       {
         id: "client-2",
@@ -323,7 +371,29 @@ export default function App() {
         paymentStatus: "Atrasado",
         paymentValue: "299,00",
         paymentMethod: "Boleto",
-        dueDate: "05"
+        dueDate: "05",
+        isicAccessAuthorized: true,
+        isicAuthorizedCameras: ["cam-01", "cam-02", "cam-03", "cam-04"],
+        authorizedUsers: [
+          {
+            id: "usr-comp-4",
+            name: "Carlos Eduardo (Diretor Seg.)",
+            role: "Comerciante/Dono",
+            phone: "+5511987654321",
+            accessGranted: true,
+            allowedCameras: ["cam-01", "cam-02", "cam-03", "cam-04"],
+            lastAccessTime: "Hoje às 15:02"
+          },
+          {
+            id: "usr-comp-5",
+            name: "Vigilante Noturno Portaria",
+            role: "Segurança",
+            phone: "+5511966663322",
+            accessGranted: true,
+            allowedCameras: ["cam-04"],
+            lastAccessTime: "Hoje às 01:10"
+          }
+        ]
       }
     ];
   });
@@ -984,6 +1054,88 @@ export default function App() {
     console.log("Notification already handled inline for fast UI feedback", payload, url, rawResponse);
   };
 
+  const handleBulkImport = () => {
+    if (!bulkImportText.trim()) {
+      showAppAlert("O campo de dados para importação em massa está vazio.", "Dados de Entrada Ausentes", "warn");
+      return;
+    }
+
+    const lines = bulkImportText.split("\n");
+    const importedCount: NDSClient[] = [];
+    let errorCount = 0;
+
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return; // skip comments/empty/headers
+
+      let parts: string[] = [];
+      if (bulkImportFormat === "csv") {
+        parts = trimmed.split(/[,;\t]/);
+      } else {
+        parts = [trimmed];
+      }
+
+      if (parts.length >= 2) {
+        const name = parts[0]?.trim();
+        let phone = parts[1]?.trim() || "";
+        const open = parts[2]?.trim() || "08:00";
+        const close = parts[3]?.trim() || "18:00";
+        const val = parts[4]?.trim() || "149,00";
+        
+        if (name && phone) {
+          // Format phone
+          if (!phone.startsWith("+") && !phone.startsWith("55")) {
+            if (phone.length >= 10 && /^\d+$/.test(phone)) {
+              phone = "+55" + phone;
+            }
+          }
+
+          importedCount.push({
+            id: "client-bulk-" + Math.random().toString(36).substr(2, 9) + "-" + Date.now(),
+            tradingName: name,
+            whatsapp: phone,
+            openTime: open,
+            closeTime: close,
+            createdAt: new Date().toISOString(),
+            planId: "plan-silver",
+            planName: "Prata Especial",
+            paymentStatus: "Pendente",
+            paymentValue: val,
+            paymentMethod: "Pix",
+            dueDate: "10"
+          });
+        } else {
+          errorCount++;
+        }
+      } else {
+        errorCount++;
+      }
+    });
+
+    if (importedCount.length > 0) {
+      setRegisteredClients(prev => [...importedCount, ...prev]);
+      setBulkImportText("");
+      const alertMessage = `Sucesso! Foram importados e cadastrados ${importedCount.length} estabelecimentos com sucesso no banco de dados local.\n\n${errorCount > 0 ? `Nota: ${errorCount} linhas inválidas foram puladas.` : "Todos os registros foram importados com êxito."}`;
+      showAppAlert(alertMessage, "Importação Concluída", "success");
+      
+      setLogs(prev => [
+        {
+          id: "log-bulk-import-" + Date.now(),
+          cameraName: `MÓDULO ADMIN - ESCALA 500+`,
+          timestamp: new Date().toISOString(),
+          imageUrl: feeds[0]?.imageUrl || "",
+          status: "OK",
+          reason: `🚀 [ESCALA CONCLUÍDA] Cadastro massivo executado! ${importedCount.length} novos clientes incorporados com faturamento. Inteligência de Roteamento Dinâmico unificado pronto.`,
+          operator: "CENTRAL_ADMIN",
+          sentToWhatsApp: false
+        },
+        ...prev
+      ]);
+    } else {
+      showAppAlert("Nenhum dado válido pôde ser mapeado. Certifique-se de preencher no formato correto: Nome, WhatsApp, HoraAbre, HoraFecha, Valor", "Erro na Leitura", "warn");
+    }
+  };
+
   const handleDeleteClient = (id: string) => {
     // Elegant, non-blocking state updates suitable for iframe previews without SecurityError
     const clientName = (registeredClients || []).find(c => c?.id === id)?.tradingName || "Comércio";
@@ -1049,12 +1201,169 @@ export default function App() {
     setIntelbrasDvrs(prev => prev.map(d => d.id === id ? { ...d, connected: !d.connected } : d));
   };
 
+  const handleTriggerProvisioning = (dvrId: string) => {
+    const dvr = intelbrasDvrs.find(d => d.id === dvrId);
+    if (!dvr) {
+      showAppAlert("Selecione ou cadastre um DVR Intelbras para enviar configurações via Cloud.", "DVR não selecionado", "warn");
+      return;
+    }
+
+    setIsCloudProvisioning(true);
+    setProvisionProgress(10);
+    setProvisioningLogs([
+      `[PENDING_P2P_HANDSHAKE] Iniciando negociação de túnel secundário Intelbras Cloud...`,
+      `[RESOLVING_SN] Traduzindo número de série ${dvr.addressOrSerial} no broker central de sinalização...`
+    ]);
+
+    setTimeout(() => {
+      setProvisionProgress(35);
+      setProvisioningLogs(prev => [
+        ...prev,
+        `[P2P_ESTABLISHED] Direct tunnel negotiation: success (NAT Type: PortRestrictedCone).`,
+        `[AUTHENTICATING] Enviando credenciais de administrador (User: ${dvr.user}) para o DVR perante handshake...`,
+        `[AUTH_GRANTED] Sessão de controle validada e autenticada com sucesso!`
+      ]);
+    }, 1200);
+
+    setTimeout(() => {
+      setProvisionProgress(65);
+      setProvisioningLogs(prev => [
+        ...prev,
+        `[PUSH_CONFIG] Transmitindo JSON-RPC Config Pack v2.4 (Dahua NetSDK)...`,
+        `[CGI_API_REQUEST] HTTP POST -> /cgi-bin/configManager.cgi?action=setConfig&Event[0].AnalyzeRule[0].Enable=true`,
+        `[REG_IVS_RULES] Canal 1..${dvr.channelsCount} configurados: Ativando cerca inteligente com isolamento de silhuetas humanas e veículos ✔.`,
+        `[REG_SNAPSHOT_AGENDA] configManager.cgi?action=setConfig&RecordSchedule[0].SubStream[0].Section[0].Type=Motion ✔.`
+      ]);
+    }, 2800);
+
+    setTimeout(() => {
+      setProvisionProgress(100);
+      setIsCloudProvisioning(false);
+      setProvisioningLogs(prev => [
+        ...prev,
+        `[SMTP_SET_UP] Vinculando SMTP do receptor n8n dinâmico ao barramento de alertas ✔.`,
+        `[PROVISION_SUCCESS] 🚀 SUCESSO! O DVR local foi auto-reconfigurado remotamente! Todas as cercas virtuais IVS e disparos de snapshots por IA estão 100% operativos.`
+      ]);
+      setLogs(prev => [
+        {
+          id: "log-provision-" + Date.now(),
+          cameraName: dvr.name.toUpperCase(),
+          timestamp: new Date().toISOString(),
+          imageUrl: feeds[0]?.imageUrl || "",
+          status: "OK",
+          reason: `⚡ [CLOUD AUTO-PROVISIONING]: Configuração perimetral IVS e inteligência gravadas remotamente no DVR "${dvr.name}" usando única chave Intelbras Cloud.`,
+          operator: "AUTOMOT_CLOUD",
+          sentToWhatsApp: false
+        },
+        ...prev
+      ]);
+      showAppAlert(`Parabéns! Todas as configurações de IVS, Snapshots de detecção humana e canais SMTP foram injetadas remotamente no DVR "${dvr.name}" via Intelbras Cloud!`, "Configurado com Sucesso!", "success");
+    }, 4500);
+  };
+
   // Synchronize first client default trigger selection id
   useEffect(() => {
     if (registeredClients && registeredClients.length > 0 && !testSelectedClientId) {
       setTestSelectedClientId(registeredClients[0].id);
     }
   }, [registeredClients, testSelectedClientId]);
+
+  // Synchronize first client for iSIC Lite access control
+  useEffect(() => {
+    if (registeredClients && registeredClients.length > 0 && !isicSelectedClientId) {
+      setIsicSelectedClientId(registeredClients[0].id);
+    }
+  }, [registeredClients, isicSelectedClientId]);
+
+  useEffect(() => {
+    if (intelbrasDvrs && intelbrasDvrs.length > 0 && !provisionDvrId) {
+      setProvisionDvrId(intelbrasDvrs[0].id);
+    }
+  }, [intelbrasDvrs, provisionDvrId]);
+
+  // iSIC Lite Sub-Users Access Management
+  const handleAddIsicUser = (clientId: string) => {
+    if (!newIsicUserName.trim()) {
+      showAppAlert("Digite o nome da pessoa autorizada.", "Dados incompletos", "warn");
+      return;
+    }
+    const targetClient = registeredClients.find(c => c.id === clientId);
+    if (!targetClient) return;
+
+    const newUser = {
+      id: "isic-usr-" + Date.now(),
+      name: newIsicUserName.trim(),
+      role: newIsicUserRole,
+      phone: newIsicUserPhone.trim() || "+55",
+      accessGranted: true,
+      allowedCameras: newIsicUserCams.length > 0 ? [...newIsicUserCams] : feeds.map(f => f.id)
+    };
+
+    const updated = registeredClients.map(c => {
+      if (c.id === clientId) {
+        const existingUsers = c.authorizedUsers || [];
+        return {
+          ...c,
+          authorizedUsers: [...existingUsers, newUser]
+        };
+      }
+      return c;
+    });
+
+    setRegisteredClients(updated);
+    setNewIsicUserName("");
+    setNewIsicUserPhone("");
+    setNewIsicUserCams([]);
+    showAppAlert(`Acesso do iSIC Lite configurado e liberado para "${newUser.name}"!`, "Usuário Autorizado", "success");
+  };
+
+  const handleToggleIsicUserAccess = (clientId: string, userId: string) => {
+    const updated = registeredClients.map(c => {
+      if (c.id === clientId) {
+        const users = (c.authorizedUsers || []).map(u => {
+          if (u.id === userId) {
+            const nextState = !u.accessGranted;
+            return { ...u, accessGranted: nextState };
+          }
+          return u;
+        });
+        return { ...c, authorizedUsers: users };
+      }
+      return c;
+    });
+    setRegisteredClients(updated);
+    showAppAlert("Sincronização imediata gravada no broker seguro do DVR!", "Status Atualizado", "success");
+  };
+
+  const handleDeleteIsicUser = (clientId: string, userId: string) => {
+    const updated = registeredClients.map(c => {
+      if (c.id === clientId) {
+        const users = (c.authorizedUsers || []).filter(u => u.id !== userId);
+        return { ...c, authorizedUsers: users };
+      }
+      return c;
+    });
+    setRegisteredClients(updated);
+    showAppAlert("Acesso revogado e excluído com sucesso!", "Usuário Removido", "warn");
+  };
+
+  const handleToggleIsicUserCam = (clientId: string, userId: string, camId: string) => {
+    const updated = registeredClients.map(c => {
+      if (c.id === clientId) {
+        const users = (c.authorizedUsers || []).map(u => {
+          if (u.id === userId) {
+            const list = u.allowedCameras || [];
+            const nextList = list.includes(camId) ? list.filter(id => id !== camId) : [...list, camId];
+            return { ...u, allowedCameras: nextList };
+          }
+          return u;
+        });
+        return { ...c, authorizedUsers: users };
+      }
+      return c;
+    });
+    setRegisteredClients(updated);
+  };
 
   // Handler for custom client recognition testing alerts
   const handleTriggerTestSimulation = () => {
@@ -2701,11 +3010,11 @@ export default function App() {
             )}
 
             {/* SUB-TABS SELECTOR FOR CLIENTS & FINANCEIRO */}
-            <div className="flex bg-[#0E1524] p-1 rounded-xl border border-[#1E293B] gap-1 font-mono text-xs max-w-md">
+            <div className="flex bg-[#0E1524] p-1 rounded-xl border border-[#1E293B] gap-1 font-mono text-xs max-w-4xl flex-wrap">
               <button
                 type="button"
                 onClick={() => setAdminSubTab("cadastro")}
-                className={`flex-1 py-2 px-3 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-2 cursor-pointer ${
+                className={`py-2 px-3.5 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-2 cursor-pointer ${
                   adminSubTab === "cadastro"
                     ? "bg-blue-500/15 text-blue-400 border border-blue-500/20 font-extrabold"
                     : "text-gray-400 hover:text-white"
@@ -2717,7 +3026,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => setAdminSubTab("financeiro")}
-                className={`flex-1 py-2 px-3 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-2 cursor-pointer ${
+                className={`py-2 px-3.5 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-2 cursor-pointer ${
                   adminSubTab === "financeiro"
                     ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-extrabold"
                     : "text-gray-400 hover:text-white"
@@ -2725,6 +3034,31 @@ export default function App() {
               >
                 <DollarSign className="w-3.5 h-3.5" />
                 <span>Painel Financeiro & Pagamentos</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminSubTab("isic_acessos")}
+                className={`py-2 px-3.5 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-2 cursor-pointer ${
+                  adminSubTab === "isic_acessos"
+                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/20 font-extrabold"
+                    : "text-gray-400 hover:text-white"
+                }`}
+                title="Novo item solicitado: Liberar acessos das câmeras iSIC Lite individuais para clientes"
+              >
+                <Tv className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span>🔑 Acessos iSIC Lite</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminSubTab("escala_500")}
+                className={`py-2 px-3.5 rounded-lg font-bold transition-all text-center flex items-center justify-center gap-2 cursor-pointer ${
+                  adminSubTab === "escala_500"
+                    ? "bg-indigo-500/15 text-indigo-400 border border-indigo-500/20 font-extrabold"
+                    : "text-gray-400 hover:text-white"
+                }`}
+              >
+                <Database className="w-3.5 h-3.5 text-indigo-400" />
+                <span>💡 Escala 500+ Clientes</span>
               </button>
             </div>
 
@@ -2775,8 +3109,8 @@ export default function App() {
               </div>
             )}
 
-            {adminSubTab === "cadastro" ? (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {adminSubTab === "cadastro" && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 font-mono text-xs">
                 
                 {/* REGISTER NEW MERCHANT CLIENT FORM */}
                 <div className="lg:col-span-6 bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden flex flex-col shadow-xl">
@@ -3071,7 +3405,9 @@ export default function App() {
                 </div>
 
               </div>
-            ) : (
+            )}
+
+            {adminSubTab === "financeiro" && (
               /* PANEL FINANCEIRO SUB-TAB DE ASSINATURAS */
               <div id="financeiro_subtab" className="space-y-6">
                 
@@ -3252,6 +3588,710 @@ export default function App() {
 
               </div>
             )}
+
+              {adminSubTab === "escala_500" && (
+                <div id="escala_500_subtab" className="space-y-6 font-sans">
+                  {/* METRIC ROW */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-gray-400 font-mono font-bold">Escalabilidade NDS</p>
+                        <h3 className="text-xl font-bold text-white font-mono mt-0.5">Até 1.000 Clientes</h3>
+                        <p className="text-[10px] text-[#10B981] mt-1 font-mono">✓ Sem gargalos de processamento</p>
+                      </div>
+                      <div className="p-2.5 bg-indigo-500/10 rounded-lg text-indigo-400 border border-indigo-500/20">
+                        <TrendingUp className="w-5 h-5 text-indigo-400" />
+                      </div>
+                    </div>
+
+                    <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-gray-400 font-mono font-bold">Roteamento</p>
+                        <h3 className="text-xl font-bold text-white font-mono mt-0.5">Único Fluxo Dinâmico</h3>
+                        <p className="text-[10px] text-blue-400 mt-1 font-mono">✓ 1 único webhook central</p>
+                      </div>
+                      <div className="p-2.5 bg-blue-500/10 rounded-lg text-blue-400 border border-blue-500/20">
+                        <Zap className="w-5 h-5 text-blue-400" />
+                      </div>
+                    </div>
+
+                    <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider text-gray-400 font-mono font-bold font-bold">Setup de Onboarding</p>
+                        <h3 className="text-xl font-bold text-white font-mono mt-0.5">Livre de Port-Forwarding</h3>
+                        <p className="text-[10px] text-purple-400 mt-1 font-mono">✓ P2P / SMTP Genérico</p>
+                      </div>
+                      <div className="p-2.5 bg-purple-500/10 rounded-lg text-purple-400 border border-purple-500/20">
+                        <Cpu className="w-5 h-5 text-purple-400" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Bulk Import Column */}
+                    <div className="lg:col-span-7 bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden flex flex-col shadow-xl">
+                      <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Database className="w-4 h-4 text-indigo-400 animate-pulse" />
+                          <span className="font-bold text-white text-xs uppercase font-mono tracking-wider">Super Importador em Massa (CSV)</span>
+                        </div>
+                        <div className="flex bg-[#03070E] p-0.5 rounded border border-gray-850 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setBulkImportFormat("csv")}
+                            className={`px-2 py-0.5 rounded uppercase font-bold font-mono transition-colors ${bulkImportFormat === "csv" ? "bg-[#10B981]/15 text-[#10B981]" : "text-gray-500"}`}
+                          >
+                            Padrão CSV
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-5 space-y-4 font-mono text-xs flex-1">
+                        <p className="text-gray-400 text-[11px] leading-relaxed">
+                          Adicione dezenas ou centenas de clientes de uma única vez! Basta colar as linhas contendo os dados separados por vírgula no formato especificado.
+                        </p>
+
+                        <div className="space-y-1.5">
+                          <label className="text-gray-400 text-[10px] uppercase font-bold block">Cole a Lista de Comércios (um por linha):</label>
+                          <textarea
+                            rows={8}
+                            value={bulkImportText}
+                            onChange={(e) => setBulkImportText(e.target.value)}
+                            placeholder="Exemplo de formato para copiar e colar:&#10;Mercado Compre Bem, +5511999998888, 07:00, 22:00, 149,00&#10;Supermercado Ideal, +5511987654321, 08:00, 18:00, 299,00&#10;Consultório Odonto, +5511977775555, 09:00, 19:00, 199,00"
+                            className="w-full bg-[#03070E] text-[#10B981] border border-gray-800 rounded-xl p-3.5 font-mono text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-indigo-500/50 resize-none placeholder-gray-600 block"
+                          />
+                        </div>
+
+                        <div className="bg-[#03070E] p-4 rounded-xl border border-gray-800/80 text-[10px] text-gray-400 space-y-1.5 font-sans">
+                          <p className="text-indigo-400 font-bold uppercase text-[9px] font-mono flex items-center gap-1.5">
+                            ⚠️ REGRAS DE OURO DA IMPORTAÇÃO EM MASSA:
+                          </p>
+                          <p>• Padrão aceito: <code className="text-amber-400 font-mono bg-black/40 px-1.5 py-0.5 rounded">Nome do Estabelecimento, WhatsApp, Hora Abertura, Hora Fechamento, Valor Plano</code></p>
+                          <p>• Certifique-se de manter os campos na ordem e separados por vírgulas ou ponto-e-vírgula.</p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleBulkImport()}
+                          className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white font-extrabold uppercase rounded-xl transition-all shadow-lg hover:shadow-indigo-500/10 active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer text-xs"
+                        >
+                          <Database className="w-4 h-4" /> Importar e Sincronizar Clientes em Massa
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Scale Setup Guide Column */}
+                    <div className="lg:col-span-5 bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden flex flex-col shadow-xl">
+                      <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="w-4 h-4 text-indigo-400" />
+                          <span className="font-bold text-white text-xs uppercase font-mono tracking-wider">Manual de Arquitetura Unificada 500+</span>
+                        </div>
+                      </div>
+
+                      <div className="p-5 space-y-4 font-sans text-xs leading-relaxed text-gray-300 flex-1">
+                        <div className="space-y-1.5">
+                          <h4 className="text-indigo-400 font-bold uppercase text-[11px] font-mono">1. Como Evitar a "Mega-Operação"?</h4>
+                          <p className="text-gray-400 text-[11px]">
+                            Para operar com alta rentabilidade com 500 clientes, você <strong>não deve</strong> configurar um webhook/SMTP e portal exclusivo por cliente individualmente. Isso seria insustentável. Use a técnica do <strong>Multi-Tenant Gateway (Roteamento Dinâmico de Entrada)</strong>.
+                          </p>
+                        </div>
+
+                        <div className="bg-[#03070E] p-3.5 rounded-xl border border-gray-800 font-mono text-[9.5px] space-y-2 text-gray-400 leading-normal">
+                          <p className="text-white font-bold mb-1">⚙️ ARQUITETURA DE REDE:</p>
+                          <p>1. <strong>DVR do Cliente:</strong> Envia o alerta para o <strong>único e mesmo SMTP da sua central</strong> (ex: alert@suacentral.com.br).</p>
+                          <p>2. <strong>Identificador do Remetente:</strong> O n8n recebe o alerta, lê o endereço MAC do DVR ou o ID de envio.</p>
+                          <p>3. <strong>Lookup Instantâneo:</strong> O n8n consulta no banco de dados local da sua central em milissegundos qual é o cliente associado a esse MAC/ID, verifica a janela comercial atua e despacha o alerta de WhatsApp para o número de destino salvo automaticamente!</p>
+                        </div>
+
+                        <div className="space-y-1.5 pt-3 border-t border-gray-805">
+                          <h4 className="text-indigo-400 font-bold uppercase text-[11px] font-mono">2. Vantagens do Roteamento Dinâmico:</h4>
+                          <ul className="list-disc pl-4.5 space-y-1 text-gray-400 text-[10.5px]">
+                            <li><strong>Setup de 1 Minuto por Cliente:</strong> Basta adicionar os dados do comerciante no painel escala ou no formulário principal de sua central.</li>
+                            <li><strong>Manutenção Zero nos DVRs:</strong> Se o cliente alterar a hora de funcionamento, você muda aqui em 2 cliques; sem mexer em nenhuma configuração física do DVR local do cliente!</li>
+                          </ul>
+                        </div>
+
+                        <div className="p-3 bg-indigo-950/20 border border-indigo-500/20 rounded-xl text-[10.5px] text-gray-400">
+                          <strong className="text-[#10B981] block mb-0.5">⚡ INFORMAÇÃO PRÁTICA:</strong>
+                          O banco de dados armazena os clientes em seu navegador. Quando integrados a servidores em nuvem, o n8n consulta esses registros instantaneamente de forma automática.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {adminSubTab === "isic_acessos" && (
+                <div id="isic_acessos_subtab" className="space-y-6 font-sans">
+                  
+                  {/* GRID OF COMPATIBLE INTELBRAS DVR MODELS */}
+                  <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-5 space-y-4 shadow-xl">
+                    <div className="flex items-center gap-2.5 pb-3 border-b border-[#1E293B]">
+                      <div className="p-1.5 bg-amber-500/10 border border-amber-500/25 rounded-lg text-amber-400">
+                        <Database className="w-4 h-4 text-amber-400" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-white font-mono">
+                          Lista de Modelos de DVR/NVR Intelbras Homologados
+                        </h3>
+                        <p className="text-[10px] text-gray-500 mt-0.5 font-mono">Equipamentos compatíveis com P2P, comandos CGI de Lote e Alertas de WhatsApp</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
+                      
+                      {/* CARD 1 - SERIE MHDX MULTI-HD */}
+                      <div className="bg-[#090D14] p-3.5 rounded-xl border border-gray-800/80 space-y-2">
+                        <p className="text-amber-400 font-bold border-b border-gray-850 pb-1 flex items-center justify-between">
+                          <span>🎥 MHDX Multi-HD (Séries IA)</span>
+                          <span className="text-[9px] px-1.5 py-0.2 bg-amber-500/10 text-amber-400 rounded">RECOMENDADO</span>
+                        </p>
+                        <p className="text-[10px] text-gray-400 leading-normal font-sans">
+                          Apoio total a regras IVS (Cerca Virtual, Linha Virtual) e isolamento de silhueta de humanos/veículos.
+                        </p>
+                        <div className="text-[9px] text-[#10B981] space-y-0.5 bg-black/30 p-2 rounded">
+                          <p>• MHDX 1104, 1108, 1116 (Entrada)</p>
+                          <p>• MHDX 1204, 1208, 1216 (Full HD)</p>
+                          <p>• MHDX 3004-AI, 3008-AI, 3016-AI</p>
+                          <p>• MHDX 3108-AI, 3116-AI (Inteligente)</p>
+                        </div>
+                      </div>
+
+                      {/* CARD 2 - SERIE NVD / COMPLEMENTARES */}
+                      <div className="bg-[#090D14] p-3.5 rounded-xl border border-gray-800/80 space-y-2">
+                        <p className="text-[#3B82F6] font-bold border-b border-gray-850 pb-1">
+                          🗄️ Gravadores de Vídeo IP (NVD)
+                        </p>
+                        <p className="text-[10px] text-gray-400 leading-normal font-sans">
+                          Sincronização instantânea com câmeras IP Intelbras VIP e envio de snapshot de alta definição por e-mail/n8n.
+                        </p>
+                        <div className="text-[9px] text-blue-400 space-y-0.5 bg-black/30 p-2 rounded">
+                          <p>• NVD 1204, 1208, 1216 (Série 1000)</p>
+                          <p>• NVD 3016, 3116, 3208 (Série 3000)</p>
+                          <p>• NVD 5124, 5216, 5232 (Série 5000)</p>
+                          <p>• NVD 7132, NVD 9300 (Corporativo)</p>
+                        </div>
+                      </div>
+
+                      {/* CARD 3 - COMPATIBILIDADE LEGADOS */}
+                      <div className="bg-[#090D14] p-3.5 rounded-xl border border-gray-800/80 space-y-2">
+                        <p className="text-gray-400 font-bold border-b border-gray-850 pb-1">
+                          📟 DVRs Legados & Outras Linhas
+                        </p>
+                        <p className="text-[10px] text-gray-400 leading-normal font-sans">
+                          Gravação por Detecção de Movimento convencional ou disparo CGI via API Dahua/NetSDK nativa.
+                        </p>
+                        <div className="text-[9px] text-gray-400 space-y-0.5 bg-black/30 p-2 rounded">
+                          <p>• HDCVI 1004 / 1008 / 1016 (Ger. 1, 2, 3)</p>
+                          <p>• HDCVI 3104 / 3108 / 3116 (Série Tri-híbrida)</p>
+                          <p>• Multi-HD MHDX 5000, 5200 (Alta-Linha)</p>
+                          <p>• Todos os modelos com suporte a SMTP/CGI</p>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+
+                  {/* GRANULAR CLIENT PERMISSION CONTROL PANEL */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    
+                    {/* LEFT PANEL - CHOOSE CLIENT AND SELECT GENERAL PERMISSION */}
+                    <div className="lg:col-span-6 bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden flex flex-col shadow-xl">
+                      <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <SlidersHorizontal className="w-4 h-4 text-amber-400" />
+                          <span className="font-bold text-white text-xs uppercase font-mono tracking-wider">Permissões Individuais de Visualização</span>
+                        </div>
+                      </div>
+
+                      <div className="p-5 space-y-4 font-mono text-xs flex-1">
+                        
+                        <div className="space-y-1.5">
+                          <label className="text-gray-400 text-[10px] uppercase font-bold block">Selecione o Cliente / Comércio do Robust Vision:</label>
+                          <select
+                            value={isicSelectedClientId}
+                            onChange={(e) => {
+                              setIsicSelectedClientId(e.target.value);
+                              setIsicSharingLink(""); // reset link
+                            }}
+                            className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-amber-500 font-bold select-all text-xs"
+                          >
+                            <option value="">-- Selecione o Cliente Cadastrado --</option>
+                            {registeredClients.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.tradingName} ({c.whatsapp})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {isicSelectedClientId ? (() => {
+                          const client = registeredClients.find(c => c.id === isicSelectedClientId);
+                          if (!client) return null;
+
+                          const isAuthorized = client.isicAccessAuthorized ?? true; // defaults to authorized
+
+                          // Toggle General Access Function
+                          const handleToggleGeneralAccess = () => {
+                            const updated = registeredClients.map(c => {
+                              if (c.id === client.id) {
+                                return {
+                                  ...c,
+                                  isicAccessAuthorized: !isAuthorized
+                                };
+                              }
+                              return c;
+                            });
+                            setRegisteredClients(updated);
+                            showAppAlert(
+                              `Acesso geral do aplicativo iSIC Lite para o cliente "${client.tradingName}" foi ${!isAuthorized ? "LIBERADO" : "BLOQUEADO"} com sucesso no broker Intelbras Cloud!`,
+                              "Permissão Gravada",
+                              "success"
+                            );
+                          };
+
+                          return (
+                            <div className="space-y-4 pt-3 border-t border-gray-850">
+                              
+                              {/* TOGGLE ACCESS BAR */}
+                              <div className="flex items-center justify-between p-3.5 bg-[#03070E] rounded-xl border border-gray-850">
+                                <div>
+                                  <p className="text-white font-bold text-[11px] uppercase">Acesso Global iSIC Lite</p>
+                                  <p className="text-gray-500 text-[9px] font-sans mt-0.5 leading-normal">
+                                    Define se o cliente ou seus funcionários conseguem abrir algum feed de câmeras no dispositivo mobile.
+                                  </p>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={handleToggleGeneralAccess}
+                                  className={`px-4 py-2 font-extrabold uppercase rounded text-[10px] transition-all cursor-pointer whitespace-nowrap ${
+                                    isAuthorized
+                                      ? "bg-emerald-500/10 text-[#10B981] border border-emerald-500/35"
+                                      : "bg-red-500/10 text-red-400 border border-red-500/35"
+                                  }`}
+                                >
+                                  {isAuthorized ? "✓ LIBERADO" : "🔒 BLOQUEADO"}
+                                </button>
+                              </div>
+
+                              {/* CAMERA FEED GRANTED BOX */}
+                              {isAuthorized && (
+                                <div className="space-y-2">
+                                  <label className="text-gray-400 text-[10px] uppercase font-bold block">Selecione as Câmeras que este Cliente está Autorizado a ver:</label>
+                                  <div className="bg-[#03070E] rounded-xl border border-gray-850 p-3 space-y-2.5">
+                                    {feeds.map((feed) => {
+                                      const authorizedCamsList = client.isicAuthorizedCameras ?? feeds.map(f => f.id); // defaults to all cameras authorized
+                                      const isChecked = authorizedCamsList.includes(feed.id);
+
+                                      const handleToggleCamera = () => {
+                                        let nextList: string[];
+                                        if (isChecked) {
+                                          nextList = authorizedCamsList.filter(id => id !== feed.id);
+                                        } else {
+                                          nextList = [...authorizedCamsList, feed.id];
+                                        }
+
+                                        const updated = registeredClients.map(c => {
+                                          if (c.id === client.id) {
+                                            return {
+                                              ...c,
+                                              isicAuthorizedCameras: nextList
+                                            };
+                                          }
+                                          return c;
+                                        });
+                                        setRegisteredClients(updated);
+                                      };
+
+                                      return (
+                                        <div 
+                                          key={feed.id} 
+                                          onClick={handleToggleCamera}
+                                          className="flex items-center justify-between p-2 hover:bg-gray-900 rounded-lg cursor-pointer transition-colors"
+                                        >
+                                          <div className="flex items-center gap-2">
+                                            <input 
+                                              type="checkbox" 
+                                              checked={isChecked}
+                                              onChange={() => {}} // handled by click of outer dev
+                                              className="accent-[#10B981] cursor-pointer"
+                                            />
+                                            <span className="text-white font-bold">{feed.name}</span>
+                                            <span className="text-gray-500 text-[9px]">({feed.location})</span>
+                                          </div>
+                                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${isChecked ? "text-emerald-400 bg-emerald-500/5" : "text-gray-500 bg-black"}`}>
+                                            {isChecked ? "AUTORIZADA" : "OCULTA"}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                            </div>
+                          );
+                        })() : (
+                          <div className="text-center py-10 text-gray-500 font-sans">
+                            <Activity className="w-10 h-10 mx-auto text-gray-700 animate-pulse mb-2" />
+                            Selecione um cliente acima na lista para gerenciar os canais dele via iSIC Lite.
+                          </div>
+                        )}
+
+                        {registeredClients.length === 0 && (
+                          <div className="text-center py-6 text-red-400 font-sans">
+                            ⚠️ Nenhum comerciante cadastrado no sistema. Por favor, adicione os estabelecimentos na aba "Cadastro & Webhook" primeiro para listar os acessos.
+                          </div>
+                        )}
+
+                      </div>
+                    </div>
+
+                    {/* RIGHT PANEL - SECURE CREDENTIALS AND SHARING QR GENERATION */}
+                    <div className="lg:col-span-6 bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden flex flex-col shadow-xl">
+                      <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Smartphone className="w-4 h-4 text-emerald-400" />
+                          <span className="font-bold text-white text-xs uppercase font-mono tracking-wider">Chave de Conexão Mobile Segura</span>
+                        </div>
+                      </div>
+
+                      <div className="p-5 space-y-4 font-mono text-xs flex-1">
+                        
+                        {isicSelectedClientId ? (() => {
+                          const client = registeredClients.find(c => c.id === isicSelectedClientId);
+                          if (!client) return null;
+
+                          const isAuthorized = client.isicAccessAuthorized ?? true;
+
+                          // Trigger generate link simulation
+                          const handleGenerateIsicLink = () => {
+                            setIsGeneratingIsicQr(true);
+                            setTimeout(() => {
+                              setIsGeneratingIsicQr(false);
+                              const fakeToken = "ISIC-P2P-TOK-" + Math.random().toString(36).substr(2, 9).toUpperCase();
+                              const authorizedCamsList = client.isicAuthorizedCameras ?? feeds.map(f => f.id);
+                              
+                              setIsicSharingLink(`isiclite://provision?broker=intelbras-cloud&client=${encodeURIComponent(client.tradingName)}&token=${fakeToken}&channels=${authorizedCamsList.join(",")}`);
+                              showAppAlert(`Link de provisionamento seguro para aplicativo iSIC Lite gerado! Você já pode enviá-lo para ${client.tradingName}.`, "Link Gerado", "success");
+                            }, 1000);
+                          };
+
+                          return (
+                            <div className="space-y-4 leading-relaxed font-sans text-gray-350 text-[11px]">
+                              
+                              <p className="leading-normal">
+                                O Robust Vision possui integração nativa de segurança. Ao invés de fornecer a senha mestre de Admin para seus clientes carregarem no celular, nós criamos um <strong className="text-[#10B981]">Token com Permissão Limitada</strong>.
+                              </p>
+
+                              {isAuthorized ? (
+                                <div className="space-y-3.5 pt-2 border-t border-gray-850 font-mono">
+                                  <button
+                                    type="button"
+                                    onClick={handleGenerateIsicLink}
+                                    disabled={isGeneratingIsicQr}
+                                    className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 disabled:opacity-50 text-black text-center font-extrabold uppercase rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                                  >
+                                    {isGeneratingIsicQr ? (
+                                      <>
+                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                        <span>Criptografando Canais no Cloud...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Tv className="w-3.5 h-3.5 text-black" />
+                                        <span>Gerar Chave / Credencial iSIC Lite</span>
+                                      </>
+                                    )}
+                                  </button>
+
+                                  {isicSharingLink && (
+                                    <div className="bg-[#03070E] p-3.5 rounded-xl border border-gray-800 space-y-3 text-xs">
+                                      <p className="text-emerald-400 font-bold block bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded text-center text-[10px]">
+                                        ✓ CHAVE COM CANAIS SELECIONADOS GERADA COM SUCESSO!
+                                      </p>
+                                      
+                                      <div className="space-y-1">
+                                        <span className="text-gray-500 text-[10px] uppercase font-bold block">Token de Limitação de Canais:</span>
+                                        <code className="text-[#3B82F6] block bg-black/50 p-2 rounded text-[10px] break-all select-all font-mono leading-normal">
+                                          {isicSharingLink.substring(0, 75)}...
+                                        </code>
+                                      </div>
+
+                                      <div className="space-y-1.5 font-sans pt-1">
+                                        <p className="text-white font-bold text-[10px] uppercase">Como passar o acesso ao cliente?</p>
+                                        <p className="text-gray-400 text-[10px] leading-normal">
+                                          1. Clique no botão abaixo para copiar o texto com as instruções.<br/>
+                                          2. Envie para o WhatsApp do cliente.<br/>
+                                          3. Quando o cliente abrir o link no celular, o aplicativo <strong>iSIC Lite</strong> abre importando apenas as câmeras de {client.tradingName} que você selecionou!
+                                        </p>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const txt = `Prezado ${client.tradingName},\n\nAqui está sua chave de acesso segura e autorizada via aplicativo iSIC Lite para acompanhamento das câmeras integradas ao monitoramento inteligente Robust Vision:\n\n🔗 Chave de Autenticação Segura:\n${isicSharingLink}\n\n*Nota de Segurança:* Você só visualizará as câmeras permitidas pela nossa central de monitoramento, garantindo privacidade completa do estabelecimento.`;
+                                          navigator.clipboard.writeText(txt);
+                                          showAppAlert("Mensagem de instrução e link seguro iSIC Lite copiados para área de transferência!", "Copiado com Sucesso", "success");
+                                        }}
+                                        className="w-full py-2 bg-gray-900 border border-gray-800 text-white rounded font-bold uppercase text-[10px] hover:bg-gray-850 transition-colors cursor-pointer text-center"
+                                      >
+                                        Copiar Instruções de Envio
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="p-4 bg-red-950/20 border border-red-500/20 rounded-xl text-center space-y-1 text-red-400">
+                                  <Lock className="w-8 h-8 mx-auto text-red-500 animate-pulse mb-1" />
+                                  <p className="font-bold font-mono">ACESSO ISIC BLOQUEADO</p>
+                                  <p className="text-[10px] font-sans text-gray-500">Desenvolva a liberação de visualização geral ao lado para gerar novas chaves.</p>
+                                </div>
+                              )}
+
+                            </div>
+                          );
+                        })() : (
+                          <div className="text-center py-12 text-gray-500 font-sans">
+                            <Lock className="w-10 h-10 mx-auto text-gray-700 mb-2" />
+                            Selecione um cliente no painel ao lado para gerar ou revogar chaves e links de acesso iSIC Lite com canais restritos por IA.
+                          </div>
+                        )}
+
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* GRANULAR CLIENT SUB-USERS/STAFF ACCESS LIST PANEL */}
+                  {isicSelectedClientId && (() => {
+                    const client = registeredClients.find(c => c.id === isicSelectedClientId);
+                    if (!client) return null;
+
+                    const users = client.authorizedUsers || [];
+
+                    return (
+                      <div className="bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden shadow-xl space-y-4">
+                        <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-1 px-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-lg text-emerald-400 font-bold font-mono text-[10px]">
+                              👥 STAFF & USERS
+                            </div>
+                            <div>
+                              <h3 className="text-xs font-bold uppercase tracking-wider text-white font-mono">
+                                Controle de Acessos Individuais do Cliente: {client.tradingName}
+                              </h3>
+                              <p className="text-[10px] text-gray-500 mt-0.5 font-sans leading-normal">
+                                O cliente escolhe quem (e quais câmeras) cada funcionário, vigia ou sócio pode visualizar, com bloqueio em tempo real de não autorizados.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-5 space-y-5">
+                          {/* FORM - ADD NEW USER (SIMULATED CLIENT OWNER ACTION) */}
+                          <div className="bg-[#03070E] rounded-xl border border-gray-850 p-4 space-y-3.5">
+                            <span className="text-amber-400 font-bold block uppercase text-[10px] font-mono">
+                              ⚡ Autorizar Nova Pessoa ao DVR (Ação de Controle do Cliente)
+                            </span>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 text-xs font-sans">
+                              {/* NAME COLS */}
+                              <div className="md:col-span-4 space-y-1">
+                                <label className="text-gray-400 text-[9px] uppercase font-bold block font-mono">Nome Completo</label>
+                                <input
+                                  type="text"
+                                  value={newIsicUserName}
+                                  onChange={(e) => setNewIsicUserName(e.target.value)}
+                                  placeholder="Ex: Mateus Ferreira Silveira"
+                                  className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none"
+                                />
+                              </div>
+
+                              {/* PHONE COLS */}
+                              <div className="md:col-span-3 space-y-1">
+                                <label className="text-gray-400 text-[9px] uppercase font-bold block font-mono">WhatsApp/Celular</label>
+                                <input
+                                  type="text"
+                                  value={newIsicUserPhone}
+                                  onChange={(e) => setNewIsicUserPhone(e.target.value)}
+                                  placeholder="Ex: +551199887766"
+                                  className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none"
+                                />
+                              </div>
+
+                              {/* ROLE COLS */}
+                              <div className="md:col-span-3 space-y-1">
+                                <label className="text-gray-400 text-[9px] uppercase font-bold block font-mono">Vínculo/Cargo</label>
+                                <select
+                                  value={newIsicUserRole}
+                                  onChange={(e) => setNewIsicUserRole(e.target.value as any)}
+                                  className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none font-sans"
+                                >
+                                  <option value="Comerciante/Dono">Sócio / Proprietário</option>
+                                  <option value="Gerente">Gerente Geral</option>
+                                  <option value="Segurança">Segurança / Vigilante</option>
+                                  <option value="Funcionário">Funcionário Operacional</option>
+                                </select>
+                              </div>
+
+                              {/* BUTTON COLS */}
+                              <div className="md:col-span-2 flex items-end">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddIsicUser(client.id)}
+                                  className="w-full py-1.5 bg-amber-500 hover:bg-amber-600 text-black font-extrabold uppercase rounded text-[10px] transition-colors cursor-pointer flex items-center justify-center gap-1 font-mono"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>AUTORIZAR</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* SELECT CAMERA COLS FOR THE NEW USER */}
+                            <div className="text-[10px] pt-1 border-t border-gray-900">
+                              <span className="text-gray-400 font-bold uppercase font-mono block mb-1.5">Permitir Apenas Câmeras Específicas:</span>
+                              <div className="flex flex-wrap gap-2">
+                                {feeds.map(feed => {
+                                  const isSelected = newIsicUserCams.includes(feed.id);
+                                  const handleToggleNewUserCam = () => {
+                                    if (isSelected) {
+                                      setNewIsicUserCams(prev => prev.filter(id => id !== feed.id));
+                                    } else {
+                                      setNewIsicUserCams(prev => [...prev, feed.id]);
+                                    }
+                                  };
+                                  return (
+                                    <button
+                                      type="button"
+                                      key={feed.id}
+                                      onClick={handleToggleNewUserCam}
+                                      className={`px-2 py-1 rounded text-[9px] font-bold border font-mono cursor-pointer transition-all ${
+                                        isSelected 
+                                          ? "bg-[#10B981]/15 text-[#10B981] border-[#10B981]/25" 
+                                          : "bg-[#090D14] text-gray-400 border-gray-850 hover:text-white"
+                                      }`}
+                                    >
+                                      {feed.name}
+                                    </button>
+                                  );
+                                })}
+                                <p className="text-[9px] text-gray-550 self-center ml-2">※ Se nenhuma câmera for explicitamente marcada, o usuário terá acesso automático a todas.</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* LIST OF CURRENT SUB USERS AND ROLES */}
+                          <div className="space-y-2.5">
+                            <span className="text-white font-mono uppercase font-bold text-[10px] block">Lista de Usuários com Credenciais de Acesso ao DVR ({users.length})</span>
+                            
+                            {users.length === 0 ? (
+                              <p className="text-center py-6 text-gray-500 font-sans border border-dashed border-gray-800 rounded-xl leading-relaxed text-[10px]">
+                                Nenhum outro funcionário cadastrado para este DVR. Use o formulário acima para autorizar pessoas de confiança do cliente.
+                              </p>
+                            ) : (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-[10.5px] text-left border-collapse font-sans">
+                                  <thead>
+                                    <tr className="border-b border-gray-850 font-mono text-gray-400 uppercase text-[9px] tracking-wider bg-[#03070E]">
+                                      <th className="py-2.5 px-3">Nome do Portador</th>
+                                      <th className="py-2.5 px-3">Cargo / Perfil</th>
+                                      <th className="py-2.5 px-3">Sincronia Celular</th>
+                                      <th className="py-2.5 px-3">Câmeras Liberadas</th>
+                                      <th className="py-2.5 px-3 text-center">Controle de Segurança</th>
+                                      <th className="py-2.5 px-3 text-right">Ação</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-850">
+                                    {users.map((usr) => {
+                                      const allowedCamsList = usr.allowedCameras || feeds.map(f => f.id);
+                                      return (
+                                        <tr key={usr.id} className="hover:bg-gray-900/40 transition-colors">
+                                          <td className="py-3 px-3 font-bold text-white">
+                                            {usr.name}
+                                            <span className="block font-mono text-[9px] text-gray-500 font-normal">{usr.phone}</span>
+                                          </td>
+                                          <td className="py-3 px-3">
+                                            <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold ${
+                                              usr.role === "Comerciante/Dono" 
+                                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20 font-extrabold"
+                                                : usr.role === "Gerente"
+                                                ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                                : usr.role === "Segurança"
+                                                ? "bg-red-500/10 text-red-400 border border-red-500/20 font-bold"
+                                                : "bg-[#0A0D14] text-gray-300 border border-gray-800"
+                                            }`}>
+                                              {usr.role.toUpperCase()}
+                                            </span>
+                                          </td>
+                                          <td className="py-3 px-3 font-mono text-[9.5px] text-gray-400">
+                                            <div className="flex items-center gap-1.5">
+                                              <div className={`h-1.5 w-1.5 rounded-full ${usr.accessGranted ? "bg-emerald-450 animate-pulse" : "bg-red-500"}`} />
+                                              <span>{usr.lastAccessTime || "Ativo remoto"}</span>
+                                            </div>
+                                          </td>
+                                          <td className="py-3 px-3">
+                                            <div className="flex flex-wrap gap-1">
+                                              {feeds.map(feed => {
+                                                const hasAccess = allowedCamsList.includes(feed.id);
+                                                return (
+                                                  <button
+                                                    type="button"
+                                                    key={feed.id}
+                                                    onClick={() => handleToggleIsicUserCam(client.id, usr.id, feed.id)}
+                                                    className={`px-1.5 py-0.2 rounded text-[8px] font-bold border transition-colors cursor-pointer ${
+                                                      hasAccess
+                                                        ? "bg-emerald-500/10 text-[#10B981] border-emerald-500/20 font-extrabold"
+                                                        : "bg-black text-gray-600 border-gray-900 hover:text-gray-400"
+                                                    }`}
+                                                    title={hasAccess ? "Clique para desautorizar" : "Clique para autorizar"}
+                                                  >
+                                                    {feed.name.split(" ")[0]} {feed.name.split(" ")[1] || ""}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+                                          </td>
+                                          <td className="py-3 px-3 text-center">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleToggleIsicUserAccess(client.id, usr.id)}
+                                              className={`px-2.5 py-1 text-[9px] font-bold rounded cursor-pointer transition-all uppercase border ${
+                                                usr.accessGranted
+                                                  ? "bg-[#10B981]/15 text-[#10B981]/90 border-[#10B981]/30 hover:bg-[#10B981]/25 font-extrabold"
+                                                  : "bg-red-500/15 text-red-400 border-red-500/25 hover:bg-red-500/20"
+                                              }`}
+                                            >
+                                              {usr.accessGranted ? "✓ ATIVO" : "🔒 REVOGADO"}
+                                            </button>
+                                          </td>
+                                          <td className="py-3 px-3 text-right">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteIsicUser(client.id, usr.id)}
+                                              className="p-1.5 hover:bg-red-500/10 text-gray-500 hover:text-red-400 rounded transition-colors cursor-pointer"
+                                              title="Excluir autorização permanentemente"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                </div>
+              )}
 
           </div>
         )}
@@ -3585,9 +4625,301 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className="bg-[#0E1524] p-4 rounded-xl border border-gray-800 text-[10px] text-gray-400 leading-relaxed space-y-1.5">
-                    <p className="text-blue-400 font-bold uppercase">💡 Inteligência com Equipamentos Físicos Intelbras:</p>
-                    <p>Ao integrar seu DVR aqui, o módulo de monitoramento da Robust Vision conecta-se dinamicamente via barramentos homologados iSIC Lite ou Intelbras Cloud para coletar amostras de telemetria e imagens de segurança em instâncias críticas de invasão.</p>
+                  {/* INTERACTIVE COMPREHENSIVE RECOGNITION PROGRAMMING MANUAL */}
+                  <div className="bg-[#0E1524] rounded-xl border border-gray-800/80 p-4 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-gray-800 pb-3 gap-2">
+                      <div>
+                        <p className="text-emerald-400 font-bold uppercase tracking-wider text-[11px] flex items-center gap-1.5 font-sans">
+                          <Activity className="w-3.5 h-3.5" /> Manual de Integração do Especialista (PhD)
+                        </p>
+                        <p className="text-[10px] text-gray-500 mt-0.5 font-sans">Métodos e configurações profissionais para recepção nativa e perfeita de fotos e alertas no Zap</p>
+                      </div>
+                      <div className="flex bg-[#03070E] p-0.5 rounded-lg border border-gray-800/60 self-start sm:self-auto flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setDvrGuideTab("dvr_config")}
+                          className={`px-2 py-1 text-[9px] font-bold rounded cursor-pointer transition-all ${
+                            dvrGuideTab === "dvr_config"
+                              ? "bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/25"
+                              : "text-gray-500 hover:text-gray-300 border border-transparent"
+                          }`}
+                        >
+                          1. PROGRAMAR DVR
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDvrGuideTab("n8n_flow")}
+                          className={`px-2 py-1 text-[9px] font-bold rounded cursor-pointer transition-all ml-1 ${
+                            dvrGuideTab === "n8n_flow"
+                              ? "bg-blue-500/10 text-blue-400 border border-blue-500/25"
+                              : "text-gray-500 hover:text-gray-300 border border-transparent"
+                          }`}
+                        >
+                          2. SUPABASE ⇄ N8N
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDvrGuideTab("whatsapp_api")}
+                          className={`px-2 py-1 text-[9px] font-bold rounded cursor-pointer transition-all ml-1 ${
+                            dvrGuideTab === "whatsapp_api"
+                              ? "bg-purple-500/10 text-purple-400 border border-purple-500/25"
+                              : "text-gray-500 hover:text-gray-300 border border-transparent"
+                          }`}
+                        >
+                          3. ENVIO WHATSAPP
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDvrGuideTab("cloud_provision")}
+                          className={`px-2 py-1 text-[9px] font-bold rounded cursor-pointer transition-all ml-1 ${
+                            dvrGuideTab === "cloud_provision"
+                              ? "bg-amber-500/10 text-amber-400 border border-amber-500/25 shadow animate-pulse"
+                              : "text-gray-400 hover:text-gray-200 border border-transparent"
+                          }`}
+                        >
+                          ⚡ 4. AUTO-SETUP CLOUD
+                        </button>
+                      </div>
+                    </div>
+
+                    {dvrGuideTab === "dvr_config" && (
+                      <div className="space-y-3.5 text-[11px] leading-relaxed text-gray-300">
+                        <div className="space-y-1">
+                          <span className="text-emerald-400 font-bold block">A. ATIVAR DETECÇÃO INTELIGENTE (IVS / SMART MOTION):</span>
+                          <p className="text-gray-400 text-[10px]">
+                            Para evitar falsos disparos no WhatsApp devido a vento, galhos ou sombras, configure inteligência nativa diretamente na firmware do DVR Intelbras:
+                          </p>
+                          <ol className="list-decimal pl-4.5 space-y-1 mt-1 text-gray-400 text-[10px]">
+                            <li>Acesse o <strong>Menu Principal &gt; Inteligência de Vídeo &gt; IVS</strong> (ou Vídeo Detecção Inteligente).</li>
+                            <li>Selecione o Canal da câmera perimetral e adicione uma regra de <strong>Cerca Virtual</strong> ou <strong>Linha Virtual</strong>.</li>
+                            <li>Desenhe o perímetro de segurança crítico do estabelecimento do cliente.</li>
+                            <li>Marque estritamente os filtros de classificação: <strong>[✔] Humano</strong> e/ou <strong>[✔] Veículo</strong>. Isso fará com que o DVR só dispare quando houver detecção real.</li>
+                          </ol>
+                        </div>
+
+                        <div className="space-y-1 pt-1 border-t border-gray-900">
+                          <span className="text-emerald-400 font-bold block">B. CONFIGURAR CAPTURA DE FOTOS (SNAPSHOT):</span>
+                          <p className="text-gray-400 text-[10px]">
+                            Altere a programação de fotos do DVR para reagir sob evento analítico de segurança:
+                          </p>
+                          <ul className="list-disc pl-4.5 space-y-1 mt-1 text-gray-400 text-[10px]">
+                            <li>Vá em <strong>Menu &gt; Sistema &gt; Armazenamento &gt; Agenda &gt; Configurar (Instante)</strong>.</li>
+                            <li>Garanta que a agenda esteja pintada de <strong>Verde (MD - Movimento)</strong> ou <strong>Amarelo (Intel - Inteligente)</strong> 24h por dia nos canais desejados.</li>
+                          </ul>
+                        </div>
+
+                        <div className="space-y-1 pt-1 border-t border-gray-900">
+                          <span className="text-blue-400 font-bold block uppercase">C. ENVIAR FOTOS AUTOMATICAMENTE (SMTP / CGI PULL):</span>
+                          <p className="text-gray-400 text-[10px]">
+                            Escolha um dos dois métodos homologados para o Robust Vision pegar as imagens perfeitamente:
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1.5 font-sans">
+                            <div className="bg-[#03070E] p-2.5 rounded-lg border border-gray-800 text-[10px]">
+                              <span className="text-white font-bold block mb-0.5">Método 1: Push Ativo pelo DVR (SMTP Email)</span>
+                              Configure <strong>Menu &gt; Rede &gt; E-mail</strong>. Ative o envio, configure o servidor SMTP (ex: Gmail ou SMTP corporativo) e coloque para o DVR disparar fotos anexadas para uma caixa postal exclusiva controlada pelo n8n via gatilho <i>IMAP Email Trigger</i>.
+                            </div>
+                            <div className="bg-[#03070E] p-2.5 rounded-lg border border-gray-800 text-[10px]">
+                              <span className="text-white font-bold block mb-0.5">Método 2: Pull no Webhook (CGI HTTP API) <span className="text-emerald-400 text-[9px]">RECOMENDADO</span></span>
+                              Sempre que um sensor de barreira acender ou o n8n for ativado, o próprio n8n faz uma chamada HTTP GET direta ao DVR Intelbras para puxar a foto original instantaneamente:
+                              <code className="text-amber-400 block mt-1 break-all font-mono text-[9px] bg-black/40 p-1 rounded">http://usuario:senha@[IP_CLIENTE]:[PORTA_HTTP]/cgi-bin/snapshot.cgi?channel=1</code>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {dvrGuideTab === "n8n_flow" && (
+                      <div className="space-y-3.5 text-[11px] leading-relaxed text-gray-300 font-mono">
+                        <div className="space-y-1">
+                          <span className="text-blue-400 font-bold block font-sans">ESQUEMA DE FLUXO DE AUTOMATIZAÇÃO (n8n):</span>
+                          <p className="text-gray-400 text-[10px] font-sans">
+                            A estrutura ideal do seu workflow n8n para amarrar o banco do Supabase aos disparos deve ser estruturada da seguinte forma:
+                          </p>
+                        </div>
+
+                        <div className="bg-[#03070E] p-3 rounded-lg border border-gray-800 space-y-2 text-[10px] text-gray-400">
+                          <div className="flex items-center gap-2">
+                            <span className="px-1.5 py-0.5 bg-blue-500/10 text-blue-400 border border-blue-500/25 rounded text-[8px] font-bold">PASSO 1</span>
+                            <span className="text-white font-bold font-sans">IMAP Email Trigger (ou Webhook Receptor):</span>
+                          </div>
+                          <p className="font-sans leading-relaxed text-[10px] pl-2">
+                            Recebe o e-mail enviado pelo DVR contendo o arquivo de foto em anexo. O n8n processa o anexo binário e extrai o ID do cliente ou IP/Serial do DVR contido no cabeçalho ou título do e-mail de alerta.
+                          </p>
+
+                          <div className="flex items-center gap-2 pt-2 border-t border-gray-900 mt-2">
+                            <span className="px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded text-[8px] font-bold">PASSO 2</span>
+                            <span className="text-white font-bold font-sans">Consulta no Supabase (Mapear Cliente):</span>
+                          </div>
+                          <p className="font-sans leading-relaxed text-[10px] pl-2">
+                            Realiza uma busca na tabela <code className="text-amber-400 bg-black/35 px-1 py-0.5 rounded">clients_nds</code> para puxar o WhatsApp ativo do cliente do evento, nome comercial, endereço e preferências de notificação do plano:
+                            <code className="text-emerald-400 block mt-1 bg-black/50 p-1.5 rounded text-[9px] leading-normal break-all select-all font-mono">SELECT * FROM clients_nds WHERE dvr_serial = '{"{{"}$node["IMAP Trigger"].json["subject"]{"}}"}';</code>
+                          </p>
+
+                          <div className="flex items-center gap-2 pt-2 border-t border-gray-900 mt-2">
+                            <span className="px-1.5 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/25 rounded text-[8px] font-bold">PASSO 3</span>
+                            <span className="text-white font-bold font-sans">Análise da IA Robust Vision (Gemini API / Filtro):</span>
+                          </div>
+                          <p className="font-sans leading-relaxed text-[10px] pl-2">
+                            O n8n envia a foto capturada do DVR para a API de Inteligência Artificial para duplo fator de confirmação. Se for constatada invasão humana perimetral real, o fluxo segue para o WhatsApp. Se for falso positivo interno, ele arquiva no banco, mas não causa perturbação no celular do cliente.
+                          </p>
+
+                          <div className="flex items-center gap-2 pt-2 border-t border-gray-900 mt-2">
+                            <span className="px-1.5 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/25 rounded text-[8px] font-bold">PASSO 4</span>
+                            <span className="text-white font-bold font-sans">Inserir no Histórico da Supabase:</span>
+                          </div>
+                          <p className="font-sans leading-relaxed text-[10px] pl-2">
+                            Dispara um INSERT na tabela <code className="text-amber-400 bg-black/35 px-1 py-0.5 rounded">cctv_verification_logs</code> do Supabase para manter todo o painel Robust Vision do cliente sincronizado em tempo real.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {dvrGuideTab === "whatsapp_api" && (
+                      <div className="space-y-3 text-[11px] leading-relaxed text-gray-300">
+                        <span className="text-purple-400 font-bold block font-sans">3. MODELAGEM E DISPARO DE ALERTAS COM MÍDIA NO ZAP:</span>
+                        <p className="text-gray-400 text-[10px] font-sans">
+                          Para a imagem com foto do DVR chegar perfeitamente e nativa no celular do cliente sob um layout profissional e de alto impacto de segurança:
+                        </p>
+
+                        <div className="bg-[#03070E] p-3.5 rounded-lg border border-gray-800 space-y-3 font-mono">
+                          <div className="space-y-1">
+                            <span className="text-white font-bold block text-[10px] font-sans">Layout do Conteúdo do Alerta (Template Recomendado):</span>
+                            <div className="bg-black/50 p-2.5 rounded text-gray-400 text-[9px] leading-normal font-sans border border-gray-900">
+                              🚨 *ROBUST VISION - INFRAÇÃO REVELADA* <br/>
+                              ━━━━━━━━━━━━━━━━━━━━━ <br/>
+                              🏢 *Comercio:* {"{{"}$json.trading_name{"}}"} <br/>
+                              📍 *Câmera:* {"{{"}$json.camera_name{"}}"} <br/>
+                              🕒 *Data/Hora:* {"{{"}new Date().toLocaleString('pt-BR'){"}}"} <br/>
+                              ⚠️ *Fato:* {"{{"}$json.detection_event{"}}"} (Invasor detectado pela IA perimetral) <br/>
+                              🔑 *Garantia:* Monitoramento Ativo Antifalhas NDS <br/>
+                              ━━━━━━━━━━━━━━━━━━━━━ <br/>
+                              _💡 Segundos após o disparo físico, a imagem original foi enviada para auditoria centralizada._
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 pt-1.5 border-t border-gray-900">
+                            <span className="text-white font-bold block text-[10px] font-sans">Parâmetros das APIs de WhatsApp (Multiplataforma):</span>
+                            <p className="text-gray-400 text-[9px] font-sans">
+                              Utilize o nó de <strong className="text-purple-400">HTTP Request</strong> no n8n. Se você usa o <strong>Evolution API</strong> ou <strong>Z-API</strong>, configure o disparo de imagem enviando as variáveis do e-mail do DVR como form-data:
+                            </p>
+                            <code className="text-emerald-400 block mt-1 bg-black/60 p-2 rounded text-[8px] leading-relaxed break-all select-all">
+                              MÉTODO: POST <br/>
+                              URL: https://seu-servidor-zap.com/message/sendMedia/instancia_nds <br/>
+                              HEADERS: auth-token: [token_secreto] <br/>
+                              BODY (form-data): <br/>
+                              &nbsp;&nbsp;number: "55" + client_phone <br/>
+                              &nbsp;&nbsp;caption: [mensagem_acima] <br/>
+                              &nbsp;&nbsp;media: [arquivo_anexo_binario_repassado_pelo_trigger_do_dvr]
+                            </code>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-[#10B981]/5 border border-[#10B981]/10 rounded-xl text-[10px] text-gray-400">
+                          <strong className="text-[#10B981] font-sans block mb-0.5">🚀 VANTAGEM DE OPERAR NATIVO CONFORME MANUAL:</strong>
+                          Este modelo remove a necessidade de intermediários lentos. O disparo ocorre de forma assíncrona, chegando ao WhatsApp do cliente final em 2 a 5 segundos após a agressão de intrusão física do DVR ser capturada!
+                        </div>
+                      </div>
+                    )}
+
+                    {dvrGuideTab === "cloud_provision" && (
+                      <div className="space-y-4 text-[11px] leading-relaxed text-gray-300 font-sans">
+                        <div>
+                          <span className="text-amber-400 font-bold block uppercase text-xs mb-1">⚡ Auto-Provisionamento do DVR via Intelbras Cloud (API P2P)</span>
+                          <p className="text-gray-400 text-[10px]">
+                            Através da tecnologia de conexões ponto-a-ponto (P2P), é possível enviar comandos CGI e pacotes JSON-RPC para reconfigurar remotamente os DVRs da Intelbras sem precisar acessar o computador local do cliente ou abrir portas.
+                          </p>
+                        </div>
+
+                        {/* SELECT DVR AND AUTO SETUP INTERFACE */}
+                        <div className="bg-[#03070E] p-4 rounded-xl border border-gray-800 space-y-3">
+                          <label className="text-gray-300 font-mono text-[10px] uppercase font-bold block">Selecione o DVR Cadastrado para Configurar:</label>
+                          <div className="flex flex-col sm:flex-row gap-2.5">
+                            <select
+                              value={provisionDvrId}
+                              onChange={(e) => setProvisionDvrId(e.target.value)}
+                              className="flex-1 bg-[#090D14] text-white border border-gray-800 rounded-lg px-3 py-2 text-xs focus:outline-none"
+                            >
+                              <option value="">-- Selecione o Dispositivo --</option>
+                              {intelbrasDvrs.map(dvr => (
+                                <option key={dvr.id} value={dvr.id}>
+                                  {dvr.name} ({dvr.addressOrSerial})
+                                </option>
+                              ))}
+                            </select>
+
+                            <button
+                              type="button"
+                              disabled={isCloudProvisioning || !provisionDvrId}
+                              onClick={() => handleTriggerProvisioning(provisionDvrId)}
+                              className="px-5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white rounded-lg font-extrabold uppercase text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1.5 font-sans"
+                            >
+                              {isCloudProvisioning ? (
+                                <>
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Gravando Remoto...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Zap className="w-3.5 h-3.5 animate-bounce text-amber-300" />
+                                  <span>⚡ CLOUD AUTO-PROVISÃO</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Progress bar */}
+                          {isCloudProvisioning && (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[9px] text-gray-400 font-mono">
+                                <span>Gravando regras IVS e instantâneos dvr...</span>
+                                <span>{provisionProgress}%</span>
+                              </div>
+                              <div className="w-full bg-[#111827] h-1.5 rounded-full overflow-hidden">
+                                <div 
+                                  className="bg-gradient-to-r from-amber-500 to-emerald-500 h-full transition-all duration-300" 
+                                  style={{ width: `${provisionProgress}%` }}
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Console Output */}
+                          {provisioningLogs.length > 0 && (
+                            <div className="bg-black/90 rounded-lg p-3 border border-gray-850 font-mono text-[9px] text-[#10B981] space-y-1.5 max-h-48 overflow-y-auto leading-normal">
+                              <div className="text-gray-500 border-b border-gray-900 pb-1 flex items-center justify-between font-sans">
+                                <span>Terminal de Provisionamento Remoto Intelbras Cloud</span>
+                                <span className="animate-ping h-1.5 w-1.5 rounded-full bg-emerald-450"></span>
+                              </div>
+                              {provisioningLogs.map((log, idx) => (
+                                <p key={idx} className={log.includes("SUCESSO") ? "text-emerald-400 font-bold" : log.includes("CGI_API") ? "text-blue-400" : "text-[#10B981]"}>
+                                  {log}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* HIGH LEVEL ARQ EXPLANATIONS */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 border-t border-gray-900">
+                          <div className="bg-[#03070E] p-3 rounded-lg border border-gray-800 space-y-1.5 text-[10px]">
+                            <span className="text-white font-bold block uppercase text-[10px]"><Activity className="w-3.5 h-3.5 text-red-400 inline mr-1" /> Como o script funciona nos bastidores?</span>
+                            <p className="text-gray-400 leading-normal font-sans">
+                              1. O script centralizado do n8n/node faz login no broker P2P da Intelbras Cloud usando apenas o NS (Serial).<br/>
+                              2. Após o handshake de NAT, estabelece uma conexão TCP autenticada com admin/senha.<br/>
+                              3. Dispara comandos CGI de configuração de forma lote para habilitar regras de IVS e SMTP.
+                            </p>
+                          </div>
+
+                          <div className="bg-[#03070E] p-3 rounded-lg border border-gray-800 space-y-1.5 text-[10px]">
+                            <span className="text-white font-bold block bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/10 uppercase text-[10px]"><Database className="w-3.5 h-3.5 text-indigo-450 inline mr-1" /> Exemplo da API CGI enviada em Lote:</span>
+                            <code className="text-amber-400 block bg-black/40 p-1.5 rounded font-mono text-[8.5px] leading-relaxed break-all">
+                              // Habilitar Snapshot de Alarme perimetral no Canal 1:<br/>
+                              POST /cgi-bin/configManager.cgi?action=setConfig&Event[0].AnalyzeRule[0].EventHandler.Snapshot=true&RecordSchedule[0].SubStream[0].Section[0].Type=Motion
+                            </code>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

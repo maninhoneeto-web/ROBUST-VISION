@@ -84,6 +84,20 @@ export interface NDSClient {
   paymentValue?: string;
   paymentMethod?: "Pix" | "Boleto" | "Cartão" | "Dinheiro";
   dueDate?: string;
+  isicAccessAuthorized?: boolean;
+  isicAuthorizedCameras?: string[];
+  isicUserCredentials?: string;
+  authorizedUsers?: AuthorizedUser[];
+}
+
+export interface AuthorizedUser {
+  id: string;
+  name: string;
+  role: "Comerciante/Dono" | "Gerente" | "Segurança" | "Funcionário";
+  phone: string;
+  accessGranted: boolean;
+  allowedCameras: string[]; // IDs das câmeras liberadas para este usuário específico
+  lastAccessTime?: string;
 }
 
 export interface IntelbrasDVR {
