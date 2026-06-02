@@ -213,6 +213,13 @@ export default function App() {
     timestamp: string;
   }>>([]);
 
+  // Interactive client-focused recognition event testing states
+  const [testSelectedClientId, setTestSelectedClientId] = useState<string>("");
+  const [testSelectedCameraId, setTestSelectedCameraId] = useState<string>("cam-01");
+  const [testEventType, setTestEventType] = useState<"intruder" | "vehicle" | "cat" | "wind">("intruder");
+  const [testIsRunning, setTestIsRunning] = useState(false);
+  const [testLogLines, setTestLogLines] = useState<string[]>([]);
+
   // --- NEW STATES FOR ADMIN TAB CLIENTS FORM & DVR CLOUD ---
   const [activeTab, setActiveTab] = useState<"video" | "admin_clients" | "dvr_integrations" | "export_store">("video");
   const [clientTradingName, setClientTradingName] = useState("");
@@ -1040,6 +1047,131 @@ export default function App() {
 
   const handleToggleIntelbrasDvrStatus = (id: string) => {
     setIntelbrasDvrs(prev => prev.map(d => d.id === id ? { ...d, connected: !d.connected } : d));
+  };
+
+  // Synchronize first client default trigger selection id
+  useEffect(() => {
+    if (registeredClients && registeredClients.length > 0 && !testSelectedClientId) {
+      setTestSelectedClientId(registeredClients[0].id);
+    }
+  }, [registeredClients, testSelectedClientId]);
+
+  // Handler for custom client recognition testing alerts
+  const handleTriggerTestSimulation = () => {
+    const client = registeredClients.find(c => c.id === testSelectedClientId) || registeredClients[0];
+    if (!client) {
+      showAppAlert("Por favor, cadastre pelo menos um comércio/cliente na aba de administração para realizar testes customizados.", "Nenhum Cliente Encontrado", "warn");
+      return;
+    }
+
+    setTestIsRunning(true);
+    setTestLogLines([]);
+    
+    // Choose selected camera feed
+    const camera = feeds.find(f => f.id === testSelectedCameraId) || feeds[0];
+    const cameraName = camera ? camera.name : "Câmera 01";
+
+    let statusText: "ALERTA" | "OK" = "ALERTA";
+    let alertReason = "";
+    let mediaUrl = "";
+
+    if (testEventType === "intruder") {
+      statusText = "ALERTA";
+      alertReason = "DETECÇÃO ANALÍTICA: Presença de invasor humano suspeito forçando acesso pelo perímetro murado.";
+      mediaUrl = INITIAL_FEEDS[1]?.imageUrl || "";
+    } else if (testEventType === "vehicle") {
+      statusText = "ALERTA";
+      alertReason = "DETECÇÃO ANALÍTICA: Veículo suspeito estacionado após horário limite de tráfego.";
+      mediaUrl = INITIAL_FEEDS[0]?.imageUrl || "";
+    } else if (testEventType === "cat") {
+      statusText = "OK";
+      alertReason = "FILTRO INTELIGENTE: Pequeno animal (gato doméstico) identificado caminhando sobre o muro. Nenhuma ameaça humana presente.";
+      mediaUrl = INITIAL_FEEDS[2]?.imageUrl || "";
+    } else if (testEventType === "wind") {
+      statusText = "OK";
+      alertReason = "FILTRO INTELIGENTE: Oscilação de galhos devido a vento forte de tempestade. Evento de vento ignorado.";
+      mediaUrl = INITIAL_FEEDS[0]?.imageUrl || "";
+    }
+
+    const addLog = (line: string) => {
+      setTestLogLines(prev => [...prev, `[${new Date().toLocaleTimeString("pt-BR")}] ${line}`]);
+    };
+
+    // Delay steps simulating physical network delivery
+    setTimeout(() => {
+      addLog(`🔍 [PROT. CFTV] Sincronizando fluxo com DVR "${cameraName}" do cliente "${client.tradingName}"...`);
+    }, 200);
+
+    setTimeout(() => {
+      addLog(`🧠 [IA INTEGRADA] Analisando frame em tempo seguro por algoritmos de visão analítica do Robust Vision...`);
+    }, 850);
+
+    setTimeout(() => {
+      addLog(`⚖️ [VEREDICTO IA] Processo de IA concluído com sucesso. Diagnóstico: [${statusText}] - ${alertReason}`);
+    }, 1500);
+
+    setTimeout(() => {
+      addLog(`💾 [SUPABASE] Salvando evento analítico de disparo na tabela 'cctv_verification_logs'...`);
+    }, 2100);
+
+    setTimeout(() => {
+      const targetWebhook = clientWebhookUrl || "https://n8n.cloud";
+      addLog(`📡 [n8n Webhook] Disparando payload JSON da central para o endereço: ${targetWebhook}`);
+      
+      if (targetWebhook && targetWebhook.startsWith("http")) {
+        fetch(targetWebhook, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "robust_vision_test",
+            client: client.tradingName,
+            phone: client.whatsapp,
+            camera: cameraName,
+            status: statusText,
+            reason: alertReason,
+            timestamp: new Date().toISOString()
+          })
+        }).catch(() => {});
+      }
+    }, 2800);
+
+    setTimeout(() => {
+      addLog(`🕒 [WhatsApp Agendador] Verificando regras de agendamento de segurança com WhatsApp ou horários do estabelecimento...`);
+      
+      if (statusText === "ALERTA") {
+        addLog(`📱 [WhatsApp Dispatcher] Canal autorizado! Gerando template de foto com link inteligente...`);
+        const whatsappMsg = `🚨 *ROBUST VISION - ALERTA REAL DE TESTE*\n━━━━━━━━━━━━━━━━━━━━━\n🏢 *Cliente:* ${client.tradingName}\n📍 *Câmera:* ${cameraName}\n🕒 *Medição:* ${new Date().toLocaleTimeString("pt-BR")}\n⚠️ *Fato:* ${alertReason}\n━━━━━━━━━━━━━━━━━━━━━\n_Disparado via API de Automação Robust Vision para o Zap cadastrado._`;
+        
+        setWhatsappNotifications(prev => [
+          {
+            id: "wa-test-" + Date.now(),
+            to: client.whatsapp,
+            message: whatsappMsg,
+            timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
+          },
+          ...prev
+        ]);
+        addLog(`💬 [WhatsApp] Mensagem de alerta com imagem/texto enviada com sucesso para o WhatsApp: ${client.whatsapp}`);
+      } else {
+        addLog(`☒ [Filtro Ativo] Notificação de WhatsApp evitada (Falso Positivo devidamente neutralizado pelo algoritmo).`);
+      }
+
+      // Add to general logs table
+      const finalLog: VerificationLog = {
+        id: "log-test-" + Date.now(),
+        cameraName: `${cameraName} (${client.tradingName})`,
+        timestamp: new Date().toISOString(),
+        imageUrl: mediaUrl,
+        status: statusText,
+        reason: alertReason,
+        operator: "SIMULADOR_CFTV",
+        sentToWhatsApp: statusText === "ALERTA"
+      };
+
+      setLogs(prev => [finalLog, ...prev]);
+      setTestIsRunning(false);
+      showAppAlert(`Simulação de disparo executada com sucesso!\n\nCliente: ${client.tradingName}\nWhatsApp: ${client.whatsapp}\nStatus: ${statusText}\n\nVerifique o novo log na tabela e os disparos enviados na fila do WhatsApp no final da página.`, "Simulação Executada", "success");
+    }, 3400);
   };
 
   // Helper to clear log database
@@ -3668,6 +3800,147 @@ export default function App() {
 
           </div>
         )}
+
+        {/* INTERACTIVE TEST PANEL & SIMULATOR */}
+        <section id="test_simulator_section" className="bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden mb-6 font-sans">
+          <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-white font-mono flex items-center gap-2">
+                <Play className="w-4 h-4 text-[#10B981] animate-pulse" /> Painel de Testes & Simulador de Reconhecimento
+              </h3>
+              <p className="text-[10px] text-gray-500 mt-0.5">Sua central interativa para ver como estão funcionando os disparos de imagens/alertas por cliente no Zap</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] px-2 py-0.5 rounded-full font-mono bg-[#10B981]/15 text-[#10B981] font-bold border border-[#10B981]/25">
+                ATIVO EM SESSÃO
+              </span>
+            </div>
+          </div>
+
+          <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Left Controls Column */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="bg-[#090D14] p-4 rounded-xl border border-gray-800/60 space-y-3.5">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-gray-400 uppercase font-mono tracking-wider block">1. Selecione o Cliente de Teste</label>
+                  {registeredClients.length === 0 ? (
+                    <div className="p-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded text-xs font-mono">
+                      Nenhum cliente cadastrado. Cadastre um cliente na aba "Administração" para testar.
+                    </div>
+                  ) : (
+                    <select
+                      value={testSelectedClientId}
+                      onChange={(e) => setTestSelectedClientId(e.target.value)}
+                      className="w-full bg-[#111827] border border-gray-800 rounded-lg p-2 text-xs font-mono text-white focus:outline-none focus:border-[#10B981]/50 focus:ring-1 focus:ring-[#10B981]/35 cursor-pointer"
+                    >
+                      {registeredClients.map((client) => (
+                        <option key={client.id} value={client.id}>
+                          {client.tradingName} ({client.whatsapp})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-gray-400 uppercase font-mono tracking-wider block">2. Câmera / Feed</label>
+                    <select
+                      value={testSelectedCameraId}
+                      onChange={(e) => setTestSelectedCameraId(e.target.value)}
+                      className="w-full bg-[#111827] border border-gray-800 rounded-lg p-2 text-xs font-mono text-white focus:outline-none focus:border-[#10B981]/50 cursor-pointer"
+                    >
+                      {feeds.map((feed) => (
+                        <option key={feed.id} value={feed.id}>
+                          {feed.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-gray-400 uppercase font-mono tracking-wider block">3. Tipo de Detecção</label>
+                    <select
+                      value={testEventType}
+                      onChange={(e) => setTestEventType(e.target.value as any)}
+                      className="w-full bg-[#111827] border border-gray-800 rounded-lg p-2 text-xs font-mono text-white focus:outline-none focus:border-[#10B981]/50 cursor-pointer"
+                    >
+                      <option value="intruder">👤 Invasor Humano (ALERTA)</option>
+                      <option value="vehicle">🚗 Veículo Suspeito (ALERTA)</option>
+                      <option value="cat">🐱 Gato no Muro (FILTRADO-OK)</option>
+                      <option value="wind">🍃 Rajada de Vento (FILTRADO-OK)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={testIsRunning || registeredClients.length === 0}
+                  onClick={handleTriggerTestSimulation}
+                  className={`w-full py-2.5 px-4 rounded-xl font-mono text-xs uppercase font-bold tracking-wider cursor-pointer select-none transition-all flex items-center justify-center gap-2 ${
+                    testIsRunning 
+                      ? "bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed" 
+                      : "bg-[#10B981] hover:bg-[#059669] text-[#090D14] shadow-md shadow-[#10B981]/15 active:scale-97"
+                  }`}
+                >
+                  {testIsRunning ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-gray-500" /> Processando Teste de Transmissão...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" /> Disparar Reconhecimento de Teste
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl text-[10px] font-mono text-gray-400 leading-relaxed">
+                <span className="text-blue-400 font-bold block mb-1">💡 COMO ESTÁ FUNCIONANDO O DISPARO DE IMAGENS & VÍDEO?</span>
+                Ao clicar no botão de testes, o Robust Vision simula a captura em tempo real do frame correspondente do DVR (iSIC Lite/Cloud), executa o filtro inteligente por IA do Robust Vision, registra o evento no banco central (Logs) e realiza o disparo via webhook n8n ativo e alerta formatado para o WhatsApp cadastrado do cliente selecionado.
+              </div>
+            </div>
+
+            {/* Right Trace Output Column */}
+            <div className="lg:col-span-7 flex flex-col">
+              <div className="bg-[#03070E] rounded-xl border border-gray-800/80 p-4 flex-1 flex flex-col justify-between font-mono text-xs overflow-hidden min-h-[220px]">
+                <div className="flex items-center justify-between border-b border-gray-800 pb-2 mb-3">
+                  <span className="text-[10px] text-gray-500 font-bold tracking-wider">RAIO-X DOS DISPAROS & TELEMETRIA EM TEMPO REAL</span>
+                  {testLogLines.length > 0 && (
+                    <button 
+                      type="button" 
+                      onClick={() => setTestLogLines([])}
+                      className="text-[9px] text-red-400 underline hover:text-red-300 uppercase cursor-pointer"
+                    >
+                      Limpar Monitor de Testes
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[170px] pr-2 text-emerald-400 text-[10px] leading-relaxed">
+                  {testLogLines.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-gray-600 space-y-1 font-sans py-8">
+                      <Tv className="w-8 h-8 text-gray-800 animate-pulse" />
+                      <p className="text-gray-500 font-bold font-mono text-[10px] uppercase">Aguardando Execução do Gatilho</p>
+                      <p className="text-gray-600 font-mono text-[9px] max-w-xs leading-relaxed">Selecione o cliente acima e clique em disparar para monitorar e ver os fluxos de imagens e status passo-a-passo.</p>
+                    </div>
+                  ) : (
+                    testLogLines.map((line, idx) => (
+                      <div key={idx} className="whitespace-pre-wrap py-0.5 border-b border-gray-950">
+                        {line}
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="border-t border-gray-900/60 pt-2 mt-2 flex items-center justify-between text-[8px] text-gray-500">
+                  <span>CANAL ROBUST ZAP: ON-DEMAND TESTER</span>
+                  <span>ÚLTIMA LEITURA: {new Date().toLocaleTimeString("pt-BR")}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* LOG HISTORY LISTING */}
         <section id="logs_history_section" className="bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden">
