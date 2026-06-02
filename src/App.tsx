@@ -35,7 +35,10 @@ import {
   DollarSign,
   Coins,
   FileText,
-  Check
+  Check,
+  Search,
+  Users,
+  FileCode
 } from "lucide-react";
 import { CameraFeed, VerificationLog, WhatsAppSchedule, DVRAccessDevice, SystemStats, SubscriptionPlan, SupabaseN8nConfig, NDSClient, IntelbrasDVR } from "./types";
 import { INITIAL_FEEDS, INITIAL_LOGS, INITIAL_SCHEDULES, INITIAL_DVR_DEVICES, SUBSCRIPTION_PLANS, robustVisionLogo } from "./data";
@@ -290,6 +293,8 @@ export default function App() {
   const [clientPaymentMethod, setClientPaymentMethod] = useState<"Pix" | "Boleto" | "Cartão" | "Dinheiro">("Pix");
   const [clientDueDate, setClientDueDate] = useState("10");
   const [adminSubTab, setAdminSubTab] = useState<"cadastro" | "financeiro" | "escala_500" | "isic_acessos">("cadastro");
+  const [merchantSearchQuery, setMerchantSearchQuery] = useState("");
+  const [inspectedClient, setInspectedClient] = useState<NDSClient | null>(null);
   const [isicSelectedClientId, setIsicSelectedClientId] = useState("");
   const [isGeneratingIsicQr, setIsGeneratingIsicQr] = useState(false);
   const [isicSharingLink, setIsicSharingLink] = useState("");
@@ -1423,14 +1428,23 @@ export default function App() {
       addLog(`💾 [SUPABASE] Salvando evento analítico de disparo na tabela 'cctv_verification_logs'...`);
     }, 2100);
 
+    const absoluteMediaUrl = mediaUrl 
+      ? (mediaUrl.startsWith("http://") || mediaUrl.startsWith("https://") || mediaUrl.startsWith("data:")
+          ? mediaUrl 
+          : `${window.location.origin}${mediaUrl.startsWith("/") ? "" : "/"}${mediaUrl}`)
+      : "";
+
     setTimeout(() => {
-      const targetWebhook = clientWebhookUrl || "https://n8n.cloud";
+      // Prioritize client's own webhook, fallback to global n8n, fallback to localhost/n8n.cloud
+      const targetWebhook = client.supabaseUrl || clientWebhookUrl || integrationConfig.n8nWebhookUrl || "https://n8n.cloud";
       addLog(`📡 [n8n Webhook] Disparando payload JSON da central para o endereço: ${targetWebhook}`);
+      addLog(`📸 [Link de Imagem Gerado] URL pública enviada ao n8n: ${absoluteMediaUrl}`);
       
       if (targetWebhook && targetWebhook.startsWith("http")) {
         fetch(targetWebhook, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          mode: "cors",
           body: JSON.stringify({
             event: "robust_vision_test",
             client: client.tradingName,
@@ -1438,9 +1452,19 @@ export default function App() {
             camera: cameraName,
             status: statusText,
             reason: alertReason,
+            imageUrl: absoluteMediaUrl,
+            image_url: absoluteMediaUrl,
+            mediaUrl: absoluteMediaUrl,
+            media_url: absoluteMediaUrl,
+            photoUrl: absoluteMediaUrl,
+            photo_url: absoluteMediaUrl,
+            image: absoluteMediaUrl,
+            photo: absoluteMediaUrl,
             timestamp: new Date().toISOString()
           })
-        }).catch(() => {});
+        }).catch((err) => {
+          console.error("Erro ao enviar HTTP POST para o webhook:", err);
+        });
       }
     }, 2800);
 
@@ -1449,7 +1473,7 @@ export default function App() {
       
       if (statusText === "ALERTA") {
         addLog(`📱 [WhatsApp Dispatcher] Canal autorizado! Gerando template de foto com link inteligente...`);
-        const whatsappMsg = `🚨 *ROBUST VISION - ALERTA REAL DE TESTE*\n━━━━━━━━━━━━━━━━━━━━━\n🏢 *Cliente:* ${client.tradingName}\n📍 *Câmera:* ${cameraName}\n🕒 *Medição:* ${new Date().toLocaleTimeString("pt-BR")}\n⚠️ *Fato:* ${alertReason}\n━━━━━━━━━━━━━━━━━━━━━\n_Disparado via API de Automação Robust Vision para o Zap cadastrado._`;
+        const whatsappMsg = `🚨 *ROBUST VISION - ALERTA REAL DE TESTE*\n━━━━━━━━━━━━━━━━━━━━━\n🏢 *Cliente:* ${client.tradingName}\n📍 *Câmera:* ${cameraName}\n🕒 *Medição:* ${new Date().toLocaleTimeString("pt-BR")}\n⚠️ *Fato:* ${alertReason}\n📷 *Imagem:* ${absoluteMediaUrl}\n━━━━━━━━━━━━━━━━━━━━━\n_Disparado via API de Automação Robust Vision para o Zap cadastrado._`;
         
         setWhatsappNotifications(prev => [
           {
@@ -3324,85 +3348,350 @@ export default function App() {
 
                   <div className="p-6 space-y-4 font-mono text-xs flex-1">
                     
-                    {registeredClients.length === 0 ? (
-                      <div className="text-center py-12 text-gray-500">
-                        <UserCheck className="w-12 h-12 mx-auto text-gray-600 opacity-30 mb-2 animate-pulse" />
-                        <p>Nenhum comerciante cadastrado nesta central.</p>
+                    {/* BUSCADOR DE CLIENTES */}
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className="h-3.5 w-3.5 text-gray-500" />
                       </div>
-                    ) : (
-                      <div className="space-y-3 overflow-y-auto max-h-[420px] pr-1">
-                        {(registeredClients || []).filter(Boolean).map((client) => {
-                          const statusColor = 
-                            client.paymentStatus === "Pago" 
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
-                              : client.paymentStatus === "Pendente" 
-                                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" 
-                                : "bg-red-500/10 text-red-400 border border-red-500/20";
-                          return (
-                            <div 
-                              key={client.id}
-                              className="p-3.5 bg-[#090D14] border border-gray-800 rounded-xl space-y-2 relative"
-                            >
-                              <div className="flex items-start justify-between min-w-0 pr-6">
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <h4 className="font-bold text-white text-[13px]">{client.tradingName}</h4>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        // Simple cyclic toggle
-                                        const nextStatus = client.paymentStatus === "Pago" ? "Pendente" : client.paymentStatus === "Pendente" ? "Atrasado" : "Pago";
-                                        setRegisteredClients(prev => prev.map(c => c.id === client.id ? { ...c, paymentStatus: nextStatus } : c));
-                                      }}
-                                      className={`text-[9px] font-bold px-2 py-0.5 rounded cursor-pointer transition-colors ${statusColor}`}
-                                      title="Clique para alterar status de pagamento"
-                                    >
-                                      {client.paymentStatus || "Pendente"}
-                                    </button>
+                      <input
+                        type="text"
+                        placeholder="Buscar por nome, WhatsApp ou plano..."
+                        value={merchantSearchQuery}
+                        onChange={(e) => setMerchantSearchQuery(e.target.value)}
+                        className="w-full bg-[#090D14] text-white border border-gray-800 rounded-lg pl-9 pr-8 py-2.5 focus:outline-none focus:ring-1 focus:ring-cyan-500 text-xs placeholder-gray-500"
+                      />
+                      {merchantSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setMerchantSearchQuery("")}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    
+                    {(() => {
+                      const query = merchantSearchQuery.toLowerCase().trim();
+                      const filtered = (registeredClients || []).filter(c => {
+                        if (!c) return false;
+                        return (
+                          c.tradingName.toLowerCase().includes(query) ||
+                          c.whatsapp.toLowerCase().includes(query) ||
+                          (c.planName || "").toLowerCase().includes(query) ||
+                          (c.paymentStatus || "").toLowerCase().includes(query)
+                        );
+                      });
+
+                      if (filtered.length === 0) {
+                        return (
+                          <div className="text-center py-12 text-gray-500 border border-dashed border-gray-800 rounded-xl">
+                            <Search className="w-8 h-8 mx-auto text-gray-700 mb-2" />
+                            <p className="text-[11px]">Nenhum cliente correspondente encontrado para "{merchantSearchQuery}".</p>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-3.5 overflow-y-auto max-h-[420px] pr-1">
+                          {filtered.map((client) => {
+                            const statusColor = 
+                              client.paymentStatus === "Pago" 
+                                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
+                                : client.paymentStatus === "Pendente" 
+                                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" 
+                                  : "bg-red-500/10 text-red-400 border border-red-500/20";
+                            return (
+                              <div 
+                                key={client.id}
+                                className="p-3.5 bg-[#090D14] border border-gray-800 rounded-xl space-y-2.5 relative hover:border-gray-700 transition-colors"
+                              >
+                                <div className="flex items-start justify-between min-w-0 pr-6">
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <h4 className="font-bold text-white text-[13px]">{client.tradingName}</h4>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const nextStatus = client.paymentStatus === "Pago" ? "Pendente" : client.paymentStatus === "Pendente" ? "Atrasado" : "Pago";
+                                          setRegisteredClients(prev => prev.map(c => c.id === client.id ? { ...c, paymentStatus: nextStatus } : c));
+                                        }}
+                                        className={`text-[9px] font-bold px-2 py-0.5 rounded cursor-pointer transition-colors ${statusColor}`}
+                                        title="Clique para alterar status de pagamento"
+                                      >
+                                        {client.paymentStatus || "Pendente"}
+                                      </button>
+                                    </div>
+                                    <p className="text-[9px] text-gray-500 pt-0.5">Registrado: {formatDate(client.createdAt) || "Recente"}</p>
                                   </div>
-                                  <p className="text-[9px] text-gray-500 pt-0.5">Registrado: {formatDate(client.createdAt) || "Recente"}</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteClient(client.id)}
+                                    className="absolute top-3.5 right-3.5 p-1 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
+                                    title="Remover Comércio"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteClient(client.id)}
-                                  className="absolute top-3.5 right-3.5 p-1 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
-                                  title="Remover Comércio"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
 
-                              <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-gray-800">
-                                <div>
-                                  <p className="text-gray-500 text-[9px] uppercase">WhatsApp</p>
-                                  <p className="text-blue-400 font-bold">{client.whatsapp}</p>
+                                <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-gray-800">
+                                  <div>
+                                    <p className="text-gray-500 text-[9px] uppercase">WhatsApp</p>
+                                    <p className="text-blue-400 font-bold">{client.whatsapp}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-gray-500 text-[9px] uppercase">Monitoramento</p>
+                                    <p className="text-white font-bold font-mono">⏰ {client.openTime} às {client.closeTime}</p>
+                                  </div>
                                 </div>
-                                <div>
-                                  <p className="text-gray-500 text-[9px] uppercase">Monitoramento</p>
-                                  <p className="text-white font-bold font-mono">⏰ {client.openTime} às {client.closeTime}</p>
-                                </div>
-                              </div>
 
-                              {/* PLAN & PAYMENT STRIP */}
-                              <div className="bg-[#0D1525] p-2 rounded-lg border border-gray-850 text-[10px] flex items-center justify-between text-gray-300">
-                                <span className="text-emerald-400 font-bold">{client.planName || "Plano Robusto"}</span>
-                                <div>
-                                  <span className="text-white font-bold">R$ {client.paymentValue || "149,00"}</span>
-                                  <span className="text-gray-500"> / {client.paymentMethod || "Pix"}</span>
-                                  <span className="text-blue-400 font-bold bg-[#3B82F6]/10 px-1.5 py-0.5 rounded ml-2">Dia {client.dueDate || "10"}</span>
+                                {/* PLAN & PAYMENT STRIP */}
+                                <div className="bg-[#0D1525] p-2 rounded-lg border border-gray-850 text-[10px] flex items-center justify-between text-gray-300">
+                                  <span className="text-emerald-400 font-bold">{client.planName || "Plano Robusto"}</span>
+                                  <div>
+                                    <span className="text-white font-bold">R$ {client.paymentValue || "149,00"}</span>
+                                    <span className="text-gray-500"> / {client.paymentMethod || "Pix"}</span>
+                                    <span className="text-blue-400 font-bold bg-[#3B82F6]/10 px-1.5 py-0.5 rounded ml-2 font-mono">Dia {client.dueDate || "10"}</span>
+                                  </div>
+                                </div>
+
+                                {/* QUICK INTERACTION OPTIONS (LOCALIZAR INFO + ACESSOS) */}
+                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => setInspectedClient(client)}
+                                    className="py-1.5 bg-[#1E293B] hover:bg-[#2B3952] border border-gray-800 text-white font-bold rounded text-[9px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    <Eye className="w-3 h-3 text-[#10B981]" />
+                                    <span>FICHA COMPLETA</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAdminSubTab("isic_acessos");
+                                      setIsicSelectedClientId(client.id);
+                                    }}
+                                    className="py-1.5 bg-cyan-950/40 hover:bg-cyan-950/85 text-cyan-400 border border-cyan-500/25 font-bold rounded text-[9px] uppercase tracking-wider transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                  >
+                                    <Users className="w-3 h-3" />
+                                    <span>VER STAFF/CAMS</span>
+                                  </button>
                                 </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
 
                     <div className="bg-[#0E1524] p-3.5 rounded-xl border border-gray-800 text-[10px] text-gray-400 leading-relaxed">
                       💡 <strong>Otimização de rotas:</strong> Clientes adicionados aqui recebem monitoramento com inteligência perimetral. Ao dispararem ameaças durante sua janela de funcionamento, mensagens automatizadas no WhatsApp são repassadas com as fotos.
                     </div>
                   </div>
                 </div>
+
+                {/* MODAL / DRAWER DE FICHA DETALHADA DO CLIENTE SELECIONADO */}
+                {inspectedClient && (
+                  <div className="lg:col-span-12 bg-[#1E293B]/25 border border-cyan-500/30 rounded-2xl p-6 shadow-2xl relative overflow-hidden bg-gradient-to-br from-[#0F172A] to-[#0A0F1D] animate-fade-in">
+                    
+                    {/* Background glow effects */}
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 w-64 h-64 bg-[#10B981]/15 rounded-full blur-3xl pointer-events-none" />
+
+                    <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between border-b border-gray-800 pb-4 mb-4 gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-cyan-500/10 border border-cyan-500/35 text-cyan-400 rounded-xl">
+                          <Eye className="w-5 h-5 animate-pulse" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-base font-extrabold text-white font-sans">{inspectedClient.tradingName}</h3>
+                            <span className="text-[10px] font-bold bg-cyan-500/15 text-cyan-400 px-2 py-0.5 rounded border border-cyan-500/20">
+                              Ficha Ativa NDS
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-0.5">Identificador do Cliente: #{inspectedClient.id}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Simulation trigger link */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTestSelectedClientId(inspectedClient.id);
+                            setAdminSubTab("simulacao");
+                            showAppAlert(`Configurado simulador para testar disparos no cliente: ${inspectedClient.tradingName}. Vá para a sub-guia Simulação!`, "Sucesso", "success");
+                          }}
+                          className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-lg text-[10px] uppercase tracking-wider transition-all cursor-pointer shadow flex items-center gap-1"
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>Simular Disparo de Teste</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setInspectedClient(null)}
+                          className="px-3 py-2 bg-[#1E293B] hover:bg-gray-800 text-gray-300 font-bold rounded-lg text-[10px] uppercase tracking-wide transition-colors cursor-pointer"
+                        >
+                          Voltar / Fechar
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-mono text-xs">
+                      
+                      {/* CARD 1: DADOS CADASTRAIS & SERVIÇOS */}
+                      <div className="bg-[#090D14]/90 p-4 border border-gray-800 rounded-xl space-y-3.5">
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#10B981] border-b border-gray-800 pb-1.5 flex items-center gap-2">
+                          📋 CONFIGURAÇÃO DE MONITORAMENTO
+                        </h4>
+                        
+                        <div className="space-y-2.5 text-[11px]">
+                          <div>
+                            <span className="text-gray-500 block text-[9px] uppercase">Razão Social / Nome de Fantasia</span>
+                            <span className="text-white font-bold">{inspectedClient.tradingName}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-gray-500 block text-[9px] uppercase">WhatsApp Contato</span>
+                              <span className="text-blue-400 font-bold">{inspectedClient.whatsapp}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 block text-[9px] uppercase">Registro na Central</span>
+                              <span className="text-white font-bold">{formatDate(inspectedClient.createdAt)}</span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-gray-500 block text-[9px] uppercase">Limiar de Monitoramento</span>
+                              <span className="text-amber-400 font-bold">⏰ {inspectedClient.openTime} às {inspectedClient.closeTime}</span>
+                            </div>
+                            <div>
+                              <span className="text-gray-500 block text-[9px] uppercase">Status de Operação</span>
+                              <span className="text-emerald-400 font-bold flex items-center gap-1">🟢 IA Ativa</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 2: GESTÃO FINANCEIRA DA ASSINATURA */}
+                      <div className="bg-[#090D14]/90 p-4 border border-gray-800 rounded-xl space-y-3.5">
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#10B981] border-b border-gray-800 pb-1.5 flex items-center gap-2">
+                          💳 FINANCEIRO & COBRANÇA
+                        </h4>
+
+                        <div className="space-y-3 text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-500 text-[10px]">Plano Selecionado:</span>
+                            <span className="text-teal-400 font-bold bg-teal-500/10 border border-teal-500/25 px-1.5 py-0.5 rounded">{inspectedClient.planName || "Plano Robusto"}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-500 text-[10px]">Valor da Mensalidade:</span>
+                            <span className="text-white font-bold font-mono">R$ {inspectedClient.paymentValue || "149,00"}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-500 text-[10px]">Dia do Vencimento:</span>
+                            <span className="text-blue-400 font-bold">Todo Dia {inspectedClient.dueDate || "10"}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-gray-500 text-[10px]">Forma de Cobrança:</span>
+                            <span className="text-white font-bold">{inspectedClient.paymentMethod || "Pix"}</span>
+                          </div>
+                          <div className="flex items-center justify-between pt-2 border-t border-gray-800">
+                            <span className="text-gray-500 text-[10px]">Situação do Mês:</span>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                              inspectedClient.paymentStatus === "Pago" 
+                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" 
+                                : inspectedClient.paymentStatus === "Pendente"
+                                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                  : "bg-red-500/15 text-red-400 border border-red-500/30"
+                            }`}>
+                              {inspectedClient.paymentStatus || "Pendente"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 3: NTEGRATION DETAILS & WEBHOOK CODES */}
+                      <div className="bg-[#090D14]/90 p-4 border border-gray-800 rounded-xl space-y-3.5">
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest text-[#10B981] border-b border-gray-800 pb-1.5 flex items-center gap-2">
+                          🔌 INTEGRAÇÃO N8N & SUPABASE
+                        </h4>
+
+                        <div className="space-y-3.5 text-[11px]">
+                          <div>
+                            <span className="text-gray-500 block text-[9px] uppercase">RVA Webhook Asssociado</span>
+                            <span className="text-[10px] font-sans break-all text-blue-400 select-all underline cursor-pointer">
+                              {inspectedClient.supabaseUrl || clientWebhookUrl || "Não configurado especificamente"}
+                            </span>
+                          </div>
+                          
+                          <div>
+                            <span className="text-gray-500 block text-[9px] uppercase mb-1">Payload de Teste Recomendado</span>
+                            <div className="bg-[#111827] p-2 rounded text-[9px] max-h-[80px] overflow-y-auto select-all text-gray-400 leading-snug">
+  {`{
+  "event": "robust_vision_test",
+  "client": "${inspectedClient.tradingName}",
+  "phone": "${inspectedClient.whatsapp}",
+  "imageUrl": "${window.location.origin}/src/assets/images/camera_muro.jpg"
+}`}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* STAFF / AUTHORIZED USERS SEGMENT */}
+                    <div className="mt-4 pt-4 border-t border-gray-850 bg-[#090D14]/50 p-4 rounded-xl border border-gray-800">
+                      <div className="flex items-center justify-between mb-3.5">
+                        <div className="flex items-center gap-2 text-white font-bold text-xs uppercase tracking-wider">
+                          <Users className="w-4 h-4 text-amber-500" />
+                          <span>Controle Integrado de Acesso por Usuário (isic lite Intelbras)</span>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded font-mono font-bold">
+                          Segurança de Permissão Ativa
+                        </span>
+                      </div>
+
+                      <p className="text-[11px] text-gray-400 leading-relaxed mb-4">
+                        A liberação abaixo determina estritamente quem pode autenticar e verificar estas câmeras no ambiente móvel do aplicativo de monitoramento CFTV do cliente. Apenas números autorizados abaixo com chaves válidas conseguirão decodificar fluxos.
+                      </p>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="p-3 bg-gray-900/60 border border-gray-800 rounded-lg">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-white font-bold text-[11px]">1. Proprietário Gral.</span>
+                            <span className="text-[9px] bg-indigo-500/10 text-indigo-400 px-1.5 py-0.2 rounded border border-indigo-500/15">Sócio-Diretor</span>
+                          </div>
+                          <p className="text-[11px] text-gray-300 font-bold">{inspectedClient.tradingName} (Principal)</p>
+                          <p className="text-[10px] text-[#10B981] font-mono mt-1 font-semibold">✓ Acesso Completo Liberado</p>
+                        </div>
+
+                        <div className="p-3 bg-gray-900/60 border border-gray-800 rounded-lg">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-white font-bold text-[11px]">2. Gerente Local</span>
+                            <span className="text-[9px] bg-blue-500/10 text-blue-400 px-1.5 py-0.2 rounded border border-blue-500/15">Staff Geral</span>
+                          </div>
+                          <p className="text-[11px] text-gray-300 font-bold">Sub-usuário de Confiança 01</p>
+                          <p className="text-[10px] text-amber-500 font-mono mt-1 font-semibold">⚠ Bloqueado para Configs</p>
+                        </div>
+
+                        <div className="p-3 bg-gray-900/60 border border-dashed border-gray-800 rounded-lg flex flex-col items-center justify-center text-center py-4 text-gray-500 hover:border-gray-700 transition-colors cursor-pointer"
+                          onClick={() => {
+                            setAdminSubTab("isic_acessos");
+                            setIsicSelectedClientId(inspectedClient.id);
+                          }}
+                        >
+                          <Plus className="w-4 h-4 text-[#10B981] mb-1.5" />
+                          <span className="text-[10px] font-bold text-[#10B981]">GERENCIAR ACESSOS / STAFF</span>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                )}
 
               </div>
             )}
