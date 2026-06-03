@@ -229,6 +229,7 @@ export default function App() {
 
   // --- NEW STATES FOR ADMIN TAB CLIENTS FORM & DVR CLOUD ---
   const [activeTab, setActiveTab] = useState<"video" | "admin_clients" | "dvr_integrations" | "export_store">("video");
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
   const [dvrGuideTab, setDvrGuideTab] = useState<"dvr_config" | "n8n_flow" | "whatsapp_api" | "cloud_provision">("dvr_config");
   const [provisionDvrId, setProvisionDvrId] = useState("");
   const [provisioningLogs, setProvisioningLogs] = useState<string[]>([]);
@@ -450,6 +451,7 @@ export default function App() {
     : feeds;
 
   const selectedFeed = activeViewingCameras.find((f) => f.id === selectedFeedId) || activeViewingCameras[0] || feeds[0];
+  const activeClientOfFeed = registeredClients.find(c => c.cameras?.some(cam => cam.id === selectedFeed.id)) || selectedViewingClient;
 
   // Sync selectedFeedId when the client selection changes to prevent looking at incorrect channels
   useEffect(() => {
@@ -515,8 +517,9 @@ export default function App() {
               {
                 id: "wa-loop-" + Date.now() + Math.random().toString(36).substring(2, 6),
                 to: num,
-                message: `📸 *ROBUST VISION - ENVIO DE FOTO PERIÓDICO AUTOMÁTICO*\n━━━━━━━━━━━━━━━━━━━━━\n📍 *Câmera:* ${randomFeed.name}\n🕒 *Relógio Interno:* ${systemMockTime}\n📢 *Agendamento Ativo:* ${rule.label}\n━━━━━━━━━━━━━━━━━━━━━\n_Registrado no Histórico de Eventos de CFTV Corporativo da NDS._`,
-                timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"})
+                message: `📸 *ROBUST VISION - ENVIO DE FOTO PERIÓDICO AUTOMÁTICO*\n━━━━━━━━━━━━━━━━━━━━━\n📍 *Câmera:* ${randomFeed.name}\n🕒 *Relógio Interno:* ${systemMockTime}\n📢 *Agendamento Ativo:* ${rule.label}\n📷 *Imagem:* ${randomFeed.imageUrl || ""}\n━━━━━━━━━━━━━━━━━━━━━\n_Registrado no Histórico de Eventos de CFTV Corporativo da NDS._`,
+                timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
+                imageUrl: randomFeed.imageUrl
               },
               ...prev
             ]);
@@ -688,6 +691,7 @@ export default function App() {
                 to: phoneNumber,
                 message: whatsappMsg,
                 timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
+                imageUrl: sourceImage
               },
               ...prev
             ]);
@@ -830,14 +834,15 @@ export default function App() {
     // Broadcast simulated photo dispatch to all active numbers
     activeRules.forEach(rule => {
       rule.phoneNumbers.forEach(num => {
-        const message = `📸 *ROBUST VISION - ENVIO DE FOTO PROGRAMADO*\n━━━━━━━━━━━━━━━━━━━━━\n📍 *Câmera CFTV:* ${camToUse.name}\n🕒 *Relógio Interno:* ${systemMockTime}\n📢 *Agendamento:* ${rule.label}\n🔒 *Status Rede:* iSIC Lite ativo\n🔗 *Análise automática:* Proteção com IA ativa\n━━━━━━━━━━━━━━━━━━━━━\n_Foto periódica pré-determinada enviada automaticamente via Robust Vision._`;
+        const message = `📸 *ROBUST VISION - ENVIO DE FOTO PROGRAMADO*\n━━━━━━━━━━━━━━━━━━━━━\n📍 *Câmera CFTV:* ${camToUse.name}\n🕒 *Relógio Interno:* ${systemMockTime}\n📢 *Agendamento:* ${rule.label}\n🔒 *Status Rede:* iSIC Lite ativo\n🔗 *Análise automática:* Proteção com IA ativa\n📷 *Imagem:* ${camToUse.imageUrl || ""}\n━━━━━━━━━━━━━━━━━━━━━\n_Foto periódica pré-determinada enviada automaticamente via Robust Vision._`;
         
         setWhatsappNotifications(prev => [
           {
             id: "auto-wa-" + Date.now() + Math.random().toString(36).substring(2, 6),
             to: num,
             message,
-            timestamp: dateFormatted
+            timestamp: dateFormatted,
+            imageUrl: camToUse.imageUrl
           },
           ...prev
         ]);
@@ -1650,6 +1655,7 @@ export default function App() {
             to: client.whatsapp,
             message: whatsappMsg,
             timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
+            imageUrl: absoluteMediaUrl
           },
           ...prev
         ]);
@@ -1683,7 +1689,7 @@ export default function App() {
   };
 
   return (
-    <div id="robust_vision_main" className="min-h-screen bg-[#090D14] text-gray-200 font-sans antialiased selection:bg-[#10B981] selection:text-[#090D14]">
+    <div id="robust_vision_main" className="min-h-screen bg-[#090D14] text-gray-200 font-sans antialiased selection:bg-[#10B981] selection:text-[#090D14] flex flex-col lg:flex-row">
       {/* SCANLINE OVERLAY EFFECT */}
       <div className="pointer-events-none fixed inset-0 scanline opacity-[0.03]" />
 
@@ -1692,89 +1698,235 @@ export default function App() {
         <div className="pointer-events-none fixed inset-0 alarm-flash z-50 border-4 border-red-500/80" />
       )}
 
-      {/* PREMIUM HEADER CONTROLS */}
-      <header id="header_section" className="border-b border-[#1E293B] bg-[#0E1524] sticky top-0 z-40 transition-shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          
-          {/* STRONG BRANDING COGNITIVE LOGO */}
-          <div className="flex items-center gap-3">
-            <div id="robust_vision_logo_container" className="relative w-12 h-12 bg-[#090D14] rounded-xl border border-[#10B981]/30 overflow-hidden flex items-center justify-center shadow-lg shadow-[#10B981]/5 group shrink-0">
-              <img src={robustVisionLogo} alt="Robust Vision Eye & cuffs Logo" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#090D14]/20 to-transparent pointer-events-none" />
-              <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-[#EF4444] rounded-full border-2 border-[#090D14] flex items-center justify-center">
+      {/* MOBILE TOP BAR (Only visible on mobile/tablet) */}
+      <header className="lg:hidden w-full bg-[#0E1524] border-b border-[#1E293B] p-4 flex items-center justify-between sticky top-0 z-40 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-[#090D14] rounded-lg border border-[#10B981]/30 overflow-hidden flex items-center justify-center">
+            <img src={robustVisionLogo} alt="Robust Vision Logo" className="w-full h-full object-cover" />
+          </div>
+          <div>
+            <h1 className="text-sm font-bold text-white tracking-tight font-mono">
+              ROBUST <span className="text-[#10B981]">VISION</span>
+            </h1>
+            <p className="text-[8px] text-gray-400 font-mono tracking-widest">V3.5 PRO</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-mono text-gray-400 bg-gray-900 border border-gray-800 px-2 py-1 rounded">
+            🕒 {systemMockTime}
+          </span>
+          <button
+            onClick={() => setIsMobileSidebarOpen(prev => !prev)}
+            className="p-2 bg-gray-800 rounded-lg text-[#10B981] hover:bg-gray-700 focus:outline-none cursor-pointer border border-gray-700"
+            aria-label="Abrir Menu"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+          </button>
+        </div>
+      </header>
+
+      {/* LATERAL SIDEBAR CONTAINER (Persistent on LG, sliding drawer on Mobile) */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#0E1524] border-r border-[#1E293B] p-5 flex flex-col justify-between transition-transform duration-300 transform font-mono text-xs shrink-0 lg:sticky lg:h-screen lg:translate-x-0 ${
+        isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      }`}>
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* Close button for mobile */}
+          <div className="flex lg:hidden justify-end mb-2">
+            <button 
+              onClick={() => setIsMobileSidebarOpen(false)} 
+              className="text-gray-400 hover:text-white text-[10px] bg-gray-800/80 px-2 py-1 rounded border border-gray-700 font-bold"
+            >
+              ✕ FECHAR MENU
+            </button>
+          </div>
+
+          {/* Strong Branding Section */}
+          <div className="flex items-center gap-3 border-b border-gray-800/80 pb-4 mb-5">
+            <div id="robust_vision_logo_container" className="relative w-10 h-10 bg-[#090D14] rounded-lg border border-[#10B981]/30 overflow-hidden flex items-center justify-center shrink-0">
+              <img src={robustVisionLogo} alt="Robust Vision Logo" className="w-full h-full object-cover" />
+              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#EF4444] rounded-full border border-[#090D14] flex items-center justify-center">
                 <div className="w-1.5 h-1.5 bg-white rounded-full blink-red" />
               </div>
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-white uppercase font-mono">
-                  ROBUST <span className="text-[#10B981]">VISION</span>
-                </h1>
-                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20">
-                  V3.5 PRO
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-400 font-mono">SEGURANÇA CFTV INTELIGENTE E MONITORAMENTO TEMPO REAL</p>
+              <h1 className="text-sm font-bold tracking-tight text-white uppercase font-mono leading-none">
+                ROBUST <span className="text-[#10B981]">VISION</span>
+              </h1>
+              <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/20 font-bold block mt-1 uppercase tracking-wider text-center w-fit">
+                V3.5 SECURITY
+              </span>
             </div>
           </div>
 
-          {/* SIMULATED SYSTEM CONFIGS */}
-          <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs font-mono">
-            {/* Hour simulator setup */}
-            <div className="bg-[#111827] border border-[#1E293B] rounded-lg p-1 px-2.5 flex items-center gap-2">
-              <Clock className="w-3.5 h-3.5 text-[#3B82F6]" />
-              <span className="text-gray-400 text-[11px]">RELÓGIO TESTE:</span>
-              <input 
-                type="time" 
-                value={systemMockTime}
-                onChange={(e) => setSystemMockTime(e.target.value)}
-                className="bg-[#090D14] text-white border border-[#334155] rounded px-1.5 py-0.5 font-bold focus:outline-none focus:ring-1 focus:ring-[#10B981] text-xs"
-              />
-            </div>
-
-            {/* iSIC Lite Connection Status */}
-            <button 
-              onClick={() => setIsicLiteConnected(!isicLiteConnected)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
-                isicLiteConnected 
-                  ? "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/30 hover:bg-[#10B981]/15" 
-                  : "bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/15"
-              }`}
-            >
-              <Activity className={`w-3.5 h-3.5 ${isicLiteConnected ? "animate-spin" : ""}`} />
-              <span>iSIC LITE: {isicLiteConnected ? "CONECTADO" : "MANUAL"}</span>
-            </button>
-
-            {/* Toggle Modo Compacto / Simplificado */}
+          {/* Sidebar Tab Switcher */}
+          <div id="sidebar_tabs" className="space-y-1.5 flex-1 overflow-y-auto pr-1">
+            <p className="text-[9px] text-[#10B981] uppercase font-bold tracking-widest mb-2 select-none">Menu de Operação</p>
+            
             <button
-              id="mode_toggle_btn"
-              onClick={() => setIsSimplifiedMode(!isSimplifiedMode)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer ${
-                isSimplifiedMode 
-                  ? "bg-purple-500/20 text-purple-300 border-purple-500/40 hover:bg-purple-500/30" 
-                  : "bg-gray-800/80 text-gray-400 border-gray-700 hover:text-white"
+              type="button"
+              onClick={() => {
+                setActiveTab("video");
+                setIsMobileSidebarOpen(false);
+              }}
+              className={`w-full py-2.5 px-3.5 rounded-lg font-bold flex items-center gap-3 transition-colors focus:outline-none cursor-pointer text-left text-xs ${
+                activeTab === "video"
+                  ? "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/25 font-extrabold"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
               }`}
-              title="Alternar Modo de Interface Simplificada"
             >
-              <Eye className="w-3.5 h-3.5" />
-              <span className="font-extrabold uppercase text-[10px]">VISTA: {isSimplifiedMode ? "COMPACTA" : "PADRÃO"}</span>
+              <Tv className="w-4 h-4 text-cyan-400 shrink-0" />
+              <div className="min-w-0">
+                <span className="block truncate text-[11px] uppercase">Painel Geral (CFTV)</span>
+                <span className="block text-[8px] font-normal text-gray-500 truncate mt-0.5">Operação AI em Tempo Real</span>
+              </div>
             </button>
 
-            {/* Live system status light */}
-            <div className="bg-[#111827] border border-[#1E293B] rounded-lg p-1.5 px-3 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-[#10B981] blink-green" />
-              <span className="text-white font-medium text-[11px]">SISTEMA: LIVE</span>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("admin_clients");
+                setIsMobileSidebarOpen(false);
+              }}
+              className={`w-full py-2.5 px-3.5 rounded-lg font-bold flex items-center gap-3 transition-colors focus:outline-none cursor-pointer text-left text-xs ${
+                activeTab === "admin_clients"
+                  ? "bg-blue-500/15 text-blue-400 border border-blue-500/20 font-extrabold"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
+              }`}
+            >
+              <UserCheck className="w-4 h-4 text-blue-400 shrink-0" />
+              <div className="min-w-0">
+                <span className="block truncate text-[11px] uppercase">Fichas de Clientes</span>
+                <span className="block text-[8px] font-normal text-gray-500 truncate mt-0.5">Financeiro, Cadastro & Zap</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("dvr_integrations");
+                setIsMobileSidebarOpen(false);
+              }}
+              className={`w-full py-2.5 px-3.5 rounded-lg font-bold flex items-center gap-3 transition-colors focus:outline-none cursor-pointer text-left text-xs ${
+                activeTab === "dvr_integrations"
+                  ? "bg-purple-500/15 text-purple-400 border border-purple-500/20 font-extrabold"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
+              }`}
+            >
+              <Sliders className="w-4 h-4 text-purple-400 shrink-0" />
+              <div className="min-w-0">
+                <span className="block truncate text-[11px] uppercase">DVR & Cloud Sync</span>
+                <span className="block text-[8px] font-normal text-gray-500 truncate mt-0.5">Integrações n8n e Intelbras</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("export_store");
+                setIsMobileSidebarOpen(false);
+              }}
+              className={`w-full py-2.5 px-3.5 rounded-lg font-bold flex items-center gap-3 transition-colors focus:outline-none cursor-pointer text-left text-xs ${
+                activeTab === "export_store"
+                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/20 font-extrabold"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
+              }`}
+            >
+              <Smartphone className="w-4 h-4 text-amber-400 shrink-0" />
+              <div className="min-w-0">
+                <span className="block truncate text-[11px] uppercase">Exportar Aplicativo</span>
+                <span className="block text-[8px] font-normal text-gray-500 truncate mt-0.5">Android (.apk) & iOS Store</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom Config Widgets block inside Sidebar */}
+        <div className="pt-3 border-t border-[#1E293B] mt-4 space-y-3 shrink-0 bg-[#0E1524]">
+          <p className="text-[9px] text-[#10B981] uppercase font-bold tracking-widest block mb-0.5">Central de Simulação</p>
+          
+          {/* Relógio de testes */}
+          <div className="bg-[#111827] border border-gray-800/60 rounded-lg p-2 space-y-1">
+            <span className="text-[8px] text-gray-400 font-bold flex items-center gap-1 uppercase">
+              <Clock className="w-3 h-3 text-[#3B82F6]" /> Relógio de Testes:
+            </span>
+            <input 
+              type="time" 
+              value={systemMockTime}
+              onChange={(e) => setSystemMockTime(e.target.value)}
+              className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2 py-1 font-bold text-center focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs"
+            />
           </div>
 
-        </div>
-      </header>
+          {/* iSIC Connection Status */}
+          <button 
+            onClick={() => setIsicLiteConnected(!isicLiteConnected)}
+            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border transition-all text-left text-[9.5px] cursor-pointer ${
+              isicLiteConnected 
+                ? "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20 hover:bg-[#10B981]/15" 
+                : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/15"
+            }`}
+          >
+            <span className="font-bold">CONEXÃO iSIC:</span>
+            <span className="flex items-center gap-1 font-extrabold uppercase">
+              <span className={`w-1.5 h-1.5 rounded-full ${isicLiteConnected ? "bg-[#10B981] animate-ping" : "bg-red-500"}`} />
+              {isicLiteConnected ? "ONLINE" : "MANUAL"}
+            </span>
+          </button>
 
-      {/* MAIN LAYOUT WRAPPER */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+          {/* Siren Alert Toggle */}
+          <button 
+            type="button"
+            onClick={() => {
+              setStats(prev => ({
+                ...prev,
+                sirenActive: !prev.sirenActive
+              }));
+            }}
+            className={`w-full text-[9px] py-1.5 rounded border font-semibold uppercase transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
+              stats.sirenActive 
+                ? "bg-red-600 border-red-500 text-white animate-pulse" 
+                : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"
+            }`}
+          >
+            <AlertTriangle className="w-3 h-3" />
+            {stats.sirenActive ? "DESATIVAR ALTERTAS" : "🔴 DISPARAR ALARME"}
+          </button>
+
+          {/* Mode Toggle Banner */}
+          <button
+            id="mode_toggle_btn"
+            onClick={() => setIsSimplifiedMode(!isSimplifiedMode)}
+            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border transition-all text-[9.5px] cursor-pointer ${
+              isSimplifiedMode 
+                ? "bg-purple-500/20 text-purple-300 border-purple-500/30 hover:bg-purple-500/30" 
+                : "bg-gray-800/60 text-gray-400 border-gray-800 hover:text-white"
+            }`}
+            title="Alternar Banner de Ajuda Explanatório"
+          >
+            <span className="font-semibold uppercase text-[9px]">VISTA:</span>
+            <span className="font-extrabold uppercase">{isSimplifiedMode ? "SLIM" : "PADRÃO"}</span>
+          </button>
+
+          <div className="flex items-center justify-between text-[8px] text-gray-500 font-mono mt-1 pt-1.5 border-t border-gray-800/40">
+            <span className="flex items-center gap-0.5"><span className="w-1 h-1 bg-[#10B981] rounded-full animate-pulse" /> CLOUD SECURE</span>
+            <span>V3.5 VIRTUALIZED</span>
+          </div>
+        </div>
+      </aside>
+
+      {/* MOBILE OVERLAY BACKDROP */}
+      {isMobileSidebarOpen && (
+        <div 
+          onClick={() => setIsMobileSidebarOpen(false)}
+          className="fixed inset-0 bg-black/75 z-40 lg:hidden backdrop-blur-sm"
+        />
+      )}
+
+      {/* MAIN LAYOUT WRAPPER (WORKSPACE AREA IN CENTER OF THE PAGE) */}
+      <main className="flex-1 min-w-0 overflow-y-auto px-4 md:px-8 py-6 space-y-6">
         
         {/* UPPER BANNER ALERT & EXPLANATORY INTENT */}
-        {!isSimplifiedMode ? (
+        {!isSimplifiedMode && (
           <div id="welcome_banner" className="bg-gradient-to-r from-[#111827] to-[#0E1524] border border-[#1E293B] rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="space-y-1">
               <h2 className="text-sm font-semibold text-white flex items-center gap-2">
@@ -1783,107 +1935,13 @@ export default function App() {
               <p className="text-xs text-gray-400 max-w-4xl">
                 Simulador profissional e painel de controle do **Robust Vision**. Integramos detecção de vídeo analítico ao aplicativo 
                 <strong className="text-gray-200"> iSIC Lite</strong>. Somente movimentos no horário programado disparam alertas no WhatsApp, evitando spam. 
-                Mapeie liberação de DVRs por endereços <strong className="text-gray-200">MAC corporativos e blocos de IP autorizados</strong>.
+                Mapeie liberação de DVRs por endereços <strong className="text-gray-250 text-gray-200">MAC corporativos e blocos de IP autorizados</strong>.
               </p>
             </div>
-            <div className="flex gap-2">
-              <button 
-                type="button"
-                onClick={() => {
-                  setStats(prev => ({
-                    ...prev,
-                    sirenActive: !prev.sirenActive
-                  }));
-                }}
-                className={`text-xs px-3 py-1.5 rounded-lg border font-mono font-semibold transition-all ${
-                  stats.sirenActive 
-                    ? "bg-red-600 border-red-500 text-white animate-bounce" 
-                    : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"
-                }`}
-              >
-                ⚠️ {stats.sirenActive ? "DESATIVAR ALARME" : "TESTAR SIRENE"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div id="welcome_banner_compact" className="bg-[#0E1524] border border-[#1E293B] rounded-xl px-4 py-2.5 flex items-center justify-between font-mono text-xs">
-            <div className="flex items-center gap-2 text-gray-300">
-              <Shield className="w-4 h-4 text-[#10B981] animate-pulse" />
-              <span>Modo Otimizado Ativo: Layout simplificado para operação rápida.</span>
-            </div>
-            <button 
-              type="button"
-              onClick={() => {
-                setStats(prev => ({
-                  ...prev,
-                  sirenActive: !prev.sirenActive
-                }));
-              }}
-              className={`text-[10px] px-2.5 py-1 rounded border font-semibold uppercase font-mono ${
-                stats.sirenActive 
-                  ? "bg-red-600 border-red-500 text-white animate-pulse" 
-                  : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"
-              }`}
-            >
-              Sirene {stats.sirenActive ? "ON" : "OFF"}
-            </button>
           </div>
         )}
 
-        {/* TAB SWITCHER */}
-        <div id="tabs_navigation" className="grid grid-cols-1 sm:grid-cols-4 bg-[#0E1524] p-1.5 rounded-xl border border-[#1E293B] gap-1.5 font-mono text-xs">
-          <button
-            type="button"
-            onClick={() => setActiveTab("video")}
-            className={`py-3 px-4 rounded-lg font-bold flex items-center justify-center gap-2.5 transition-all text-center focus:outline-none cursor-pointer ${
-              activeTab === "video"
-                ? "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/25 shadow-lg shadow-[#10B981]/5 font-extrabold"
-                : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
-            }`}
-          >
-            <Tv className="w-4 h-4" />
-            <span>PAINEL GERAL (CFTV)</span>
-          </button>
-          
-          <button
-            type="button"
-            onClick={() => setActiveTab("admin_clients")}
-            className={`py-3 px-4 rounded-lg font-bold flex items-center justify-center gap-2.5 transition-all text-center focus:outline-none cursor-pointer ${
-              activeTab === "admin_clients"
-                ? "bg-blue-500/15 text-blue-400 border border-blue-500/20 shadow-lg shadow-blue-500/5 font-extrabold"
-                : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
-            }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            <span>REGISTRO ADMINISTRATIVO</span>
-          </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("dvr_integrations")}
-            className={`py-3 px-4 rounded-lg font-bold flex items-center justify-center gap-2.5 transition-all text-center focus:outline-none cursor-pointer ${
-              activeTab === "dvr_integrations"
-                ? "bg-purple-500/15 text-purple-400 border border-purple-500/20 shadow-lg shadow-purple-500/5 font-extrabold"
-                : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
-            }`}
-          >
-            <Sliders className="w-4 h-4" />
-            <span>DVR INTELBRAS & CLOUD</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("export_store")}
-            className={`py-3 px-4 rounded-lg font-bold flex items-center justify-center gap-2.5 transition-all text-center focus:outline-none cursor-pointer ${
-              activeTab === "export_store"
-                ? "bg-amber-500/15 text-amber-400 border border-amber-500/20 shadow-lg shadow-amber-500/5 font-extrabold"
-                : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
-            }`}
-          >
-            <Smartphone className="w-4 h-4 text-amber-400" />
-            <span>EXPORTAR (PLAY STORE & APP STORE)</span>
-          </button>
-        </div>
 
         {activeTab === "video" && (
           <>
@@ -1960,6 +2018,21 @@ export default function App() {
               <div className="absolute top-4 right-4 hud-corner border-t-2 border-r-2" />
               <div className="absolute bottom-4 left-4 hud-corner border-b-2 border-l-2" />
               <div className="absolute bottom-4 right-4 hud-corner border-b-2 border-r-2" />
+
+              {/* CLIENT DETAIL OVERLAY HUD */}
+              {activeClientOfFeed && (
+                <div className="absolute top-4 left-4 z-10 bg-black/85 border border-[#10B981]/30 rounded-lg p-3 shadow-lg max-w-xs md:max-w-sm backdrop-blur-sm pointer-events-none text-left select-none font-mono">
+                  <p className="text-[9px] text-[#10B981] uppercase font-bold tracking-wider flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-[#10B981] rounded-full animate-ping" />
+                    🏢 Cliente Vinculado
+                  </p>
+                  <p className="text-xs font-bold text-white uppercase mt-0.5">{activeClientOfFeed.tradingName}</p>
+                  <div className="flex flex-col gap-0.5 mt-1.5 text-[8.5px] text-gray-400">
+                    <span className="flex items-center gap-1">🟢 ZAP: <strong className="text-blue-400">{activeClientOfFeed.whatsapp}</strong></span>
+                    <span className="flex items-center gap-1">⏰ EXP: <strong className="text-amber-500">{activeClientOfFeed.openTime} às {activeClientOfFeed.closeTime}</strong></span>
+                  </div>
+                </div>
+              )}
 
               {/* Status flag bottom center */}
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 font-mono text-[10px] px-3 py-1 rounded bg-black/85 text-gray-300 border border-white/10 flex items-center gap-1.5">
@@ -6456,6 +6529,20 @@ export default function App() {
                     <p className="text-gray-400">Para Número:</p>
                     <p className="font-bold text-white pr-6">{notif.to}</p>
                   </div>
+
+                  {notif.imageUrl && (
+                    <div className="relative rounded-lg overflow-hidden border border-gray-800 bg-black aspect-video max-h-[140px] w-full">
+                      <img 
+                        src={notif.imageUrl} 
+                        alt="WhatsApp Attached Frame" 
+                        className="w-full h-full object-cover" 
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute bottom-1 right-1 bg-black/75 px-1.5 py-0.5 rounded font-mono text-[8px] text-[#10B981] font-bold uppercase tracking-wider">
+                        FOTO ENVIADA
+                      </div>
+                    </div>
+                  )}
 
                   <div className="bg-[#0E1524] p-2.5 rounded border border-gray-800/80 text-[10px] font-mono text-gray-300 whitespace-pre-wrap leading-relaxed select-all">
                     {notif.message}
