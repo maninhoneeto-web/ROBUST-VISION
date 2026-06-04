@@ -11,7 +11,7 @@ import {
   getDocs,
   getDoc
 } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType, loginWithGoogle, logoutUser } from './firebase';
+import { auth, db, handleFirestoreError, OperationType, loginWithGoogle, loginAnonymously, logoutUser } from './firebase';
 import { CameraFeed, VerificationLog, WhatsAppSchedule, DVRAccessDevice, NDSClient, IntelbrasDVR, SubscriptionPlan } from './types';
 import { INITIAL_FEEDS, INITIAL_LOGS, INITIAL_SCHEDULES, INITIAL_DVR_DEVICES } from './data';
 
@@ -28,6 +28,7 @@ interface FirebaseContextType {
   
   // Auth Triggers
   login: () => Promise<User>;
+  loginAnonymously: () => Promise<User>;
   logout: () => Promise<void>;
 
   // Data Mutation Triggers (Wrapped in firestore errors)
@@ -235,6 +236,10 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return await loginWithGoogle();
   };
 
+  const handleLoginAnonymously = async () => {
+    return await loginAnonymously();
+  };
+
   const handleLogout = async () => {
     await logoutUser();
   };
@@ -380,6 +385,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       intelbrasDvrs,
       
       login: handleLogin,
+      loginAnonymously: handleLoginAnonymously,
       logout: handleLogout,
       
       saveFeed,

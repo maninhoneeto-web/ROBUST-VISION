@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInAnonymously, signOut } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -23,7 +23,7 @@ async function testConnection() {
 }
 testConnection();
 
-// Authentication helper
+// Authentication helpers
 export const googleProvider = new GoogleAuthProvider();
 
 export async function loginWithGoogle() {
@@ -32,6 +32,16 @@ export async function loginWithGoogle() {
     return result.user;
   } catch (error) {
     console.error("Erro durante o Firebase Google Auth:", error);
+    throw error;
+  }
+}
+
+export async function loginAnonymously() {
+  try {
+    const result = await signInAnonymously(auth);
+    return result.user;
+  } catch (error) {
+    console.error("Erro durante o Firebase Anonymous Auth:", error);
     throw error;
   }
 }
