@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import fs from "fs";
 
 dotenv.config();
 
@@ -103,13 +104,59 @@ app.post("/api/verify-feed", async (req, res) => {
     }
 
     // Extract base64 image data and determine mime type
-    const matches = image.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-    if (!matches || matches.length !== 3) {
-      return res.status(400).json({ error: "Formato de imagem inválido. Forneça uma string Base64 em formato Data URL." });
-    }
+    let mimeType = "";
+    let base64Data = "";
 
-    const mimeType = matches[1];
-    const base64Data = matches[2];
+    const matches = image.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+    if (matches && matches.length === 3) {
+      mimeType = matches[1];
+      base64Data = matches[2];
+    } else {
+      // If NOT a base64 string, process as a local server file path for robustness (Vite asset fallback)
+      try {
+        let relativePath = image;
+        if (image.startsWith("http://") || image.startsWith("https://")) {
+          try {
+            const urlObj = new URL(image);
+            relativePath = urlObj.pathname;
+          } catch (_) {}
+        }
+
+        // Strip queries (e.g. ?import or ?v=...)
+        relativePath = relativePath.split("?")[0].split("#")[0];
+
+        // Try mapping path relative to workspace or inside /src/assets/images
+        let filePath = "";
+        if (relativePath.startsWith("/")) {
+          filePath = path.join(process.cwd(), relativePath);
+        } else {
+          filePath = path.join(process.cwd(), "src", relativePath);
+        }
+
+        if (fs.existsSync(filePath)) {
+          const ext = path.extname(filePath).toLowerCase();
+          mimeType = ext === ".png" ? "image/png" : "image/jpeg";
+          base64Data = fs.readFileSync(filePath).toString("base64");
+        } else {
+          // Check inside standard /src/assets/images directory
+          const basename = path.basename(relativePath);
+          const fallbackPath = path.join(process.cwd(), "src", "assets", "images", basename);
+          if (fs.existsSync(fallbackPath)) {
+            const ext = path.extname(fallbackPath).toLowerCase();
+            mimeType = ext === ".png" ? "image/png" : "image/jpeg";
+            base64Data = fs.readFileSync(fallbackPath).toString("base64");
+          } else {
+            return res.status(400).json({
+              error: `Formato de imagem inválido. Não foi possível localizar o arquivo de imagem '${relativePath}' no servidor. Forneça uma string Base64 válida.`
+            });
+          }
+        }
+      } catch (err: any) {
+        return res.status(400).json({
+          error: `Erro ao processar imagem local no servidor: ${err.message}`
+        });
+      }
+    }
 
     const apiKey = process.env.GEMINI_API_KEY;
 

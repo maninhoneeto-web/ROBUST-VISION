@@ -651,7 +651,20 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error("Resposta inválida do servidor de CFTV.");
+        let errMsg = "Resposta inválida do servidor de CFTV.";
+        try {
+          const errJson = await response.json();
+          if (errJson && errJson.error) {
+            errMsg = errJson.error;
+          } else if (errJson && errJson.message) {
+            errMsg = errJson.message;
+          } else if (errJson && errJson.errorDetails) {
+            errMsg = errJson.errorDetails;
+          }
+        } catch (_) {
+          errMsg = `Erro HTTP ${response.status}: ${response.statusText || 'Falha de comunicação com o servidor de CFTV.'}`;
+        }
+        throw new Error(errMsg);
       }
 
       const data = await response.json();
@@ -769,7 +782,7 @@ export default function App() {
       console.error(err);
       setLastAnalysisResult({
         status: "ERRO",
-        reason: "Ocorreu um erro ao processar a imagem com a API do Robust Vision. Verifique a chave de API.",
+        reason: `Falha na auditoria da imagem: ${err.message || 'Ocorreu um erro inesperado. Verifique a chave da API do Gemini.'}`,
         isDemoMode: true
       });
     } finally {
