@@ -236,7 +236,26 @@ export default function App() {
   // --- NEW STATES FOR ADMIN TAB CLIENTS FORM & DVR CLOUD ---
   const [activeTab, setActiveTab] = useState<"video" | "admin_clients" | "dvr_integrations" | "export_store">("video");
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
-  const [dvrGuideTab, setDvrGuideTab] = useState<"dvr_config" | "n8n_flow" | "whatsapp_api" | "cloud_provision" | "real_agent">("dvr_config");
+  const [dvrGuideTab, setDvrGuideTab] = useState<"dvr_config" | "n8n_flow" | "whatsapp_api" | "cloud_provision" | "real_agent" | "disparos_dvr">("disparos_dvr");
+  
+  // Custom states for DVR dynamic Triggers & Alarms Simulator
+  const [testDvrSelectedId, setTestDvrSelectedId] = useState<string>("dvr-cloud-1");
+  const [testDvrSelectedChannel, setTestDvrSelectedChannel] = useState<number>(1);
+  const [testDvrEventType, setTestDvrEventType] = useState<"intruder" | "vehicle" | "cat" | "wind" | "custom">("intruder");
+  const [testDvrCustomImage, setTestDvrCustomImage] = useState<string>("");
+  const [testDvrSelectedClientId, setTestDvrSelectedClientId] = useState<string>("");
+  const [testDvrCustomPhone, setTestDvrCustomPhone] = useState<string>("");
+  const [testDvrIsRunning, setTestDvrIsRunning] = useState<boolean>(false);
+  const [testDvrLogs, setTestDvrLogs] = useState<string[]>([]);
+  const [testDvrFeedbackStatus, setTestDvrFeedbackStatus] = useState<"idle" | "capturing" | "analyzing" | "saving" | "dispatching" | "success">("idle");
+  const [testDvrVerdict, setTestDvrVerdict] = useState<{status: string; reason: string} | null>(null);
+  const [testDvrWhatsappQueue, setTestDvrWhatsappQueue] = useState<Array<{
+    id: string;
+    to: string;
+    message: string;
+    timestamp: string;
+    imageUrl?: string;
+  }>>([]);
   const [provisionDvrId, setProvisionDvrId] = useState("");
   const [provisioningLogs, setProvisioningLogs] = useState<string[]>([]);
   const [isCloudProvisioning, setIsCloudProvisioning] = useState(false);
@@ -1913,6 +1932,180 @@ export default function App() {
     }, 3400);
   };
 
+  // Dedicated simulator for tab_dvr_integrations to simulate DVR channel snapshot triggers
+  const handleTriggerDvrEventSimulation = () => {
+    const dvr = intelbrasDvrs.find(d => d.id === testDvrSelectedId) || intelbrasDvrs[0];
+    const client = registeredClients.find(c => c.id === testDvrSelectedClientId) || registeredClients[0];
+    
+    const defaultClient = {
+      id: "demo-client-id",
+      tradingName: client ? client.tradingName : "NDS Central Inteligente",
+      whatsapp: testDvrCustomPhone || (client ? client.whatsapp : "+5561998308655"),
+      supabaseUrl: (client ? client.supabaseUrl : null) || clientWebhookUrl || "https://n8n.cloud"
+    };
+    
+    const activeClient = client || defaultClient;
+    const phoneToUse = testDvrCustomPhone || activeClient.whatsapp;
+    
+    setTestDvrIsRunning(true);
+    setTestDvrVerdict(null);
+    setTestDvrLogs([]);
+    setTestDvrFeedbackStatus("capturing");
+
+    let imageUrl = "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=800&auto=format&fit=crop";
+    let statusText: "ALERTA" | "OK" = "ALERTA";
+    let alertReason = "DETECÇÃO ANALÍTICA: Perímetro violado por intrusão suspeita registrada nos canais do DVR.";
+
+    if (testDvrEventType === "intruder") {
+      imageUrl = "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=800&auto=format&fit=crop";
+      statusText = "ALERTA";
+      alertReason = "DETECÇÃO ANALÍTICA (DVR CH " + testDvrSelectedChannel + "): Invasor humano de perfil suspeito detectado cruzando a linha virtual perimetral.";
+    } else if (testDvrEventType === "vehicle") {
+      imageUrl = "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&auto=format&fit=crop";
+      statusText = "ALERTA";
+      alertReason = "DETECÇÃO ANALÍTICA (DVR CH " + testDvrSelectedChannel + "): Veículo não autorizado estacionando em área proibida fora do horário comercial.";
+    } else if (testDvrEventType === "cat") {
+      imageUrl = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&auto=format&fit=crop";
+      statusText = "OK";
+      alertReason = "FILTRO INTELIGENTE (DVR CH " + testDvrSelectedChannel + "): Gato doméstico transitando sob a fiação. Alerta descartado de forma 100% autônoma pela IA.";
+    } else if (testDvrEventType === "wind") {
+      imageUrl = "https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=800&auto=format&fit=crop";
+      statusText = "OK";
+      alertReason = "FILTRO INTELIGENTE (DVR CH " + testDvrSelectedChannel + "): Movimento repetitivo de folhas provocado por instabilidade de vento. Alerta filtrado com sucesso.";
+    } else if (testDvrEventType === "custom") {
+      imageUrl = testDvrCustomImage || "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=800";
+      statusText = "ALERTA";
+      alertReason = "UP_DVR_CUSTOM (CANAL CH " + testDvrSelectedChannel + "): Imagem customizada enviada pelo PC analisada na central de monitoramento em tempo real.";
+    }
+
+    const addDvrLog = (line: string) => {
+      setTestDvrLogs(prev => [...prev, `[${new Date().toLocaleTimeString("pt-BR")}] ${line}`]);
+    };
+
+    // Step-by-step state simulator
+    addDvrLog(`🔌 [CONEXÃO DVR] Comunicando com o dispositivo '${dvr ? dvr.name : "Intelbras Cloud"}' via porta de serviço...`);
+    
+    // Capturing status
+    setTimeout(() => {
+      setTestDvrFeedbackStatus("capturing");
+      addDvrLog(`📸 [SNAPSHOT CAPTURADO] Buscando frame estático via snapshot.cgi para o canal CH ${testDvrSelectedChannel}...`);
+      addDvrLog(`🔗 URL do Stream de Evento do DVR: ${imageUrl.slice(0, 70)}...`);
+    }, 500);
+
+    // Analyzing status
+    setTimeout(() => {
+      setTestDvrFeedbackStatus("analyzing");
+      addDvrLog(`🧠 [IA ROBUST VISION] Executando análise com IA inteligente no canal CH ${testDvrSelectedChannel}...`);
+      addDvrLog(`⚖️ [VEREDICTO IA] Processo de IA finalizado! Diagnóstico: [${statusText}] - ${alertReason}`);
+      setTestDvrVerdict({ status: statusText, reason: alertReason });
+    }, 1500);
+
+    // Saving and Webhook
+    setTimeout(() => {
+      setTestDvrFeedbackStatus("saving");
+      addDvrLog(`💾 [SUPABASE DATABASE] Registrando disparo na tabela 'cctv_verification_logs'...`);
+      
+      const targetWebhook = activeClient.supabaseUrl || clientWebhookUrl || "https://n8n.cloud";
+      addDvrLog(`📡 [n8n Webhook] Enviando payload POST de monitoramento para o endereço: ${targetWebhook}`);
+
+      if (targetWebhook && targetWebhook.startsWith("http")) {
+        fetch(targetWebhook, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          mode: "cors",
+          body: JSON.stringify({
+            event: "dvr_perimeter_disparo",
+            dvr_name: dvr ? dvr.name : "DVR Intelbras Cloud 16 CH",
+            channel: testDvrSelectedChannel,
+            client_name: activeClient.tradingName,
+            phone: phoneToUse,
+            camera_name: `DVR CH ${testDvrSelectedChannel}`,
+            status: statusText,
+            reason: alertReason,
+            imageUrl: imageUrl,
+            timestamp: new Date().toISOString()
+          })
+        }).catch((err) => {
+          console.error("n8n post simulation error:", err);
+        });
+      }
+    }, 2800);
+
+    // Dispatching WhatsApp
+    setTimeout(() => {
+      setTestDvrFeedbackStatus("dispatching");
+      addDvrLog(`🕒 [WhatsApp Scheduler] Verificando regras de agendamento de segurança com WhatsApp...`);
+      addDvrLog(`📱 [WhatsApp Dispatcher] Canal autorizado! Formatando template corporativo da NDS...`);
+      
+      const formattedMessage = `🚨 *ROBUST VISION - ALERTA REAL DE DVR INFORMATIVO*\n━━━━━━━━━━━━━━━━━━━━━\n🏢 *Estabelecimento comercial:* ${activeClient.tradingName}\n📼 *DVR Origem:* ${dvr ? dvr.name : "DVR Sincronizado"}\n📍 *Canal:* CH-${testDvrSelectedChannel} (Câmera Ativa)\n🕒 *Disparo:* ${new Date().toLocaleTimeString("pt-BR")}\n⚠️ *Laudo IA:* ${alertReason}\n📷 *Foto Anexa:* ${imageUrl}\n━━━━━━━━━━━━━━━━━━━━━\n_Verificado pelo Robust Vision AI no feed direto iSIC Lite._`;
+
+      // Put to WhatsApp Queue
+      setTestDvrWhatsappQueue(prev => [
+        {
+          id: "wa-dvr-" + Date.now(),
+          to: phoneToUse,
+          message: formattedMessage,
+          timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
+          imageUrl: imageUrl
+        },
+        ...prev
+      ]);
+
+      // Make sure it appears in the main whatsapp log array too
+      setWhatsappNotifications(prev => [
+        {
+          id: "wa-dvr-global-" + Date.now(),
+          to: phoneToUse,
+          message: formattedMessage,
+          timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
+          imageUrl: imageUrl
+        },
+        ...prev
+      ]);
+
+      addDvrLog(`💬 [WhatsApp] Mensagem de alerta de CFTV enviada com sucesso para o WhatsApp: ${phoneToUse}`);
+    }, 3900);
+
+    // Success Status
+    setTimeout(() => {
+      setTestDvrFeedbackStatus("success");
+      addDvrLog(`✓ [CONCLUÍDO] Evento de DVR processado e transmitido ao celular do comerciante com sucesso!`);
+      
+      // Save in the main system verification log
+      const finalLog: VerificationLog = {
+        id: "log-dvr-test-" + Date.now(),
+        cameraName: `DVR CH ${testDvrSelectedChannel} (${activeClient.tradingName})`,
+        timestamp: new Date().toISOString(),
+        imageUrl: imageUrl,
+        status: statusText,
+        reason: alertReason,
+        operator: dvr ? dvr.name : "DVR_CLOUD_AI",
+        sentToWhatsApp: statusText === "ALERTA"
+      };
+
+      setLogs(prev => [finalLog, ...prev]);
+      setTestDvrIsRunning(false);
+      
+      showAppAlert(`Gatilho do DVR processado com sucesso!\n\nUm disparo de foto foi encaminhado para o WhatsApp ${phoneToUse} e enviado ao painel do cliente!`, "Disparo DVR Concluído", "success");
+    }, 4800);
+  };
+
+  // Handle local image uploads representing static file feed captures from computer
+  const handleDvrImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setTestDvrCustomImage(event.target.result as string);
+          setTestDvrEventType("custom");
+          showAppAlert("Sua foto do computador foi carregada com sucesso para o canal CH " + testDvrSelectedChannel + "! Selecione 'Disparar' para simular a detecção desta foto.", "Foto Carregada do PC", "success");
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   // Helper to clear log database
   const clearLogs = () => {
     setLogs([]);
@@ -1920,7 +2113,7 @@ export default function App() {
   };
 
   return (
-    <div id="robust_vision_main" className="min-h-screen bg-[#090D14] text-gray-200 font-sans antialiased selection:bg-[#10B981] selection:text-[#090D14] flex flex-col lg:flex-row">
+    <div id="robust_vision_main" className="min-h-screen bg-[#F0F4F2] text-slate-800 font-sans antialiased selection:bg-emerald-600 selection:text-white flex flex-col lg:flex-row">
       {/* SCANLINE OVERLAY EFFECT */}
       <div className="pointer-events-none fixed inset-0 scanline opacity-[0.03]" />
 
@@ -1957,7 +2150,7 @@ export default function App() {
       </header>
 
       {/* LATERAL SIDEBAR CONTAINER (Persistent on LG, sliding drawer on Mobile) */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-[#0E1524] border-r border-[#1E293B] p-5 flex flex-col justify-between transition-transform duration-300 transform font-mono text-xs shrink-0 lg:sticky lg:h-screen lg:translate-x-0 ${
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-slate-200/80 p-5 flex flex-col justify-between transition-transform duration-300 transform font-sans text-xs shrink-0 lg:sticky lg:h-screen lg:translate-x-0 ${
         isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       }`}>
         <div className="flex flex-col flex-1 min-h-0">
@@ -1965,25 +2158,25 @@ export default function App() {
           <div className="flex lg:hidden justify-end mb-2">
             <button 
               onClick={() => setIsMobileSidebarOpen(false)} 
-              className="text-gray-400 hover:text-white text-[10px] bg-gray-800/80 px-2 py-1 rounded border border-gray-700 font-bold"
+              className="text-slate-600 hover:text-slate-900 text-[10px] bg-slate-100 border border-slate-200 px-2.5 py-1 rounded font-bold uppercase cursor-pointer"
             >
               ✕ FECHAR MENU
             </button>
           </div>
 
           {/* Strong Branding Section */}
-          <div className="flex items-center gap-3 border-b border-gray-800/80 pb-4 mb-5">
-            <div id="robust_vision_logo_container" className="relative w-10 h-10 bg-[#090D14] rounded-lg border border-[#10B981]/30 overflow-hidden flex items-center justify-center shrink-0">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-5">
+            <div id="robust_vision_logo_container" className="relative w-10 h-10 bg-emerald-50 rounded-lg border border-emerald-500/20 overflow-hidden flex items-center justify-center shrink-0">
               <img src={robustVisionLogo} alt="Robust Vision Logo" className="w-full h-full object-cover" />
-              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#EF4444] rounded-full border border-[#090D14] flex items-center justify-center">
+              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-[#EF4444] rounded-full border border-white flex items-center justify-center">
                 <div className="w-1.5 h-1.5 bg-white rounded-full blink-red" />
               </div>
             </div>
             <div>
-              <h1 className="text-sm font-bold tracking-tight text-white uppercase font-mono leading-none">
-                ROBUST <span className="text-[#10B981]">VISION</span>
+              <h1 className="text-sm font-extrabold tracking-tight text-slate-800 uppercase font-sans leading-none">
+                ROBUST <span className="text-emerald-600">VISION</span>
               </h1>
-              <span className="text-[8px] font-mono px-1 py-0.2 rounded bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/20 font-bold block mt-1 uppercase tracking-wider text-center w-fit">
+              <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100 font-bold block mt-1 uppercase tracking-wider text-center w-fit">
                 V3.5 SECURITY
               </span>
             </div>
@@ -1991,7 +2184,7 @@ export default function App() {
 
           {/* Sidebar Tab Switcher */}
           <div id="sidebar_tabs" className="space-y-1.5 flex-1 overflow-y-auto pr-1">
-            <p className="text-[9px] text-[#10B981] uppercase font-bold tracking-widest mb-2 select-none">Menu de Operação</p>
+            <p className="text-[10px] text-emerald-800 uppercase font-bold tracking-wider mb-2.5 select-none">Menu de Operação</p>
             
             <button
               type="button"
@@ -1999,16 +2192,16 @@ export default function App() {
                 setActiveTab("video");
                 setIsMobileSidebarOpen(false);
               }}
-              className={`w-full py-2.5 px-3.5 rounded-lg font-bold flex items-center gap-3 transition-colors focus:outline-none cursor-pointer text-left text-xs ${
+              className={`w-full py-3 px-3.5 rounded-xl font-bold flex items-center gap-3 transition-all focus:outline-none cursor-pointer text-left text-xs ${
                 activeTab === "video"
-                  ? "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/25 font-extrabold"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
+                  ? "bg-emerald-50/80 text-emerald-700 border border-emerald-250 shadow-sm font-extrabold"
+                  : "text-slate-500 hover:text-slate-800 hover:bg-slate-50 border border-transparent"
               }`}
             >
-              <Tv className="w-4 h-4 text-cyan-400 shrink-0" />
+              <Tv className="w-4 h-4 text-emerald-600 shrink-0" />
               <div className="min-w-0">
                 <span className="block truncate text-[11px] uppercase">Painel Geral (CFTV)</span>
-                <span className="block text-[8px] font-normal text-gray-500 truncate mt-0.5">Operação AI em Tempo Real</span>
+                <span className="block text-[8px] font-normal text-slate-400 truncate mt-0.5">Operação AI em Tempo Real</span>
               </div>
             </button>
 
@@ -2018,16 +2211,16 @@ export default function App() {
                 setActiveTab("admin_clients");
                 setIsMobileSidebarOpen(false);
               }}
-              className={`w-full py-2.5 px-3.5 rounded-lg font-bold flex items-center gap-3 transition-colors focus:outline-none cursor-pointer text-left text-xs ${
+              className={`w-full py-3 px-3.5 rounded-xl font-bold flex items-center gap-3 transition-all focus:outline-none cursor-pointer text-left text-xs ${
                 activeTab === "admin_clients"
-                  ? "bg-blue-500/15 text-blue-400 border border-blue-500/20 font-extrabold"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
+                  ? "bg-emerald-50/80 text-emerald-700 border border-emerald-250 shadow-sm font-extrabold"
+                  : "text-slate-500 hover:text-slate-800 hover:bg-slate-50 border border-transparent"
               }`}
             >
-              <UserCheck className="w-4 h-4 text-blue-400 shrink-0" />
+              <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
               <div className="min-w-0">
                 <span className="block truncate text-[11px] uppercase">Fichas de Clientes</span>
-                <span className="block text-[8px] font-normal text-gray-500 truncate mt-0.5">Financeiro, Cadastro & Zap</span>
+                <span className="block text-[8px] font-normal text-slate-400 truncate mt-0.5">Financeiro, Cadastro & Zap</span>
               </div>
             </button>
 
@@ -2037,128 +2230,98 @@ export default function App() {
                 setActiveTab("dvr_integrations");
                 setIsMobileSidebarOpen(false);
               }}
-              className={`w-full py-2.5 px-3.5 rounded-lg font-bold flex items-center gap-3 transition-colors focus:outline-none cursor-pointer text-left text-xs ${
+              className={`w-full py-3 px-3.5 rounded-xl font-bold flex items-center gap-3 transition-all focus:outline-none cursor-pointer text-left text-xs ${
                 activeTab === "dvr_integrations"
-                  ? "bg-purple-500/15 text-purple-400 border border-purple-500/20 font-extrabold"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
+                  ? "bg-emerald-50/80 text-emerald-700 border border-emerald-250 shadow-sm font-extrabold"
+                  : "text-slate-500 hover:text-slate-800 hover:bg-slate-50 border border-transparent"
               }`}
             >
-              <Sliders className="w-4 h-4 text-purple-400 shrink-0" />
+              <Sliders className="w-4 h-4 text-emerald-600 shrink-0" />
               <div className="min-w-0">
                 <span className="block truncate text-[11px] uppercase">DVR & Cloud Sync</span>
-                <span className="block text-[8px] font-normal text-gray-500 truncate mt-0.5">Integrações n8n e Intelbras</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab("export_store");
-                setIsMobileSidebarOpen(false);
-              }}
-              className={`w-full py-2.5 px-3.5 rounded-lg font-bold flex items-center gap-3 transition-colors focus:outline-none cursor-pointer text-left text-xs ${
-                activeTab === "export_store"
-                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/20 font-extrabold"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800/40 border border-transparent"
-              }`}
-            >
-              <Smartphone className="w-4 h-4 text-amber-400 shrink-0" />
-              <div className="min-w-0">
-                <span className="block truncate text-[11px] uppercase">Exportar Aplicativo</span>
-                <span className="block text-[8px] font-normal text-gray-500 truncate mt-0.5">Android (.apk) & iOS Store</span>
+                <span className="block text-[8px] font-normal text-slate-400 truncate mt-0.5">Integrações n8n e Intelbras</span>
               </div>
             </button>
           </div>
         </div>
 
         {/* Bottom Config Widgets block inside Sidebar */}
-        <div className="pt-3 border-t border-[#1E293B] mt-4 space-y-3 shrink-0 bg-[#0E1524]">
-          <p className="text-[9px] text-[#10B981] uppercase font-bold tracking-widest block mb-0.5">Central de Simulação</p>
+        <div className="pt-3 border-t border-slate-100 mt-4 space-y-3 shrink-0 bg-white">
+          <p className="text-[9px] text-emerald-800 uppercase font-bold tracking-widest block mb-0.5">Central de Simulação</p>
           
           {/* FIREBASE REAL-TIME CLOUD SYNC MODULE */}
-          <div className="bg-[#111827] border border-[#1E293B] rounded-lg p-3 space-y-2">
+          <div className="bg-slate-50 border border-slate-200/60 rounded-lg p-3 space-y-2 text-slate-700">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-white font-bold uppercase tracking-wider flex items-center gap-1.5 font-mono">
-                <Database className="w-3.5 h-3.5 text-[#10B981]" /> Cloud Database
+              <span className="text-[10px] text-slate-800 font-bold uppercase tracking-wider flex items-center gap-1.5 font-sans">
+                <Database className="w-3.5 h-3.5 text-emerald-600" /> Banco Cloud Base
               </span>
-              <span className={`w-2 h-2 rounded-full ${isFirebaseActive ? "bg-[#10B981] animate-pulse" : "bg-amber-500"}`} />
+              <span className={`w-2 h-2 rounded-full ${isFirebaseActive ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
             </div>
             {isFirebaseActive ? (
-              <div className="space-y-1.5 font-mono">
-                <p className="text-[9px] text-[#10B981] leading-tight">
-                  ✓ Conectado ao Firebase Firestore
+              <div className="space-y-1.5 font-sans text-xs">
+                <p className="text-[10px] text-emerald-700 font-semibold leading-tight">
+                  ✓ Conectado ao Firebase
                 </p>
-                <div className="bg-[#090D14] border border-emerald-950/40 p-1.5 rounded text-[9px] leading-normal text-gray-300">
-                  <div className="truncate font-semibold text-white">
-                    {fbUser?.isAnonymous ? "🔒 Usuário de Testes NDS" : (fbUser?.displayName || "Administrador NDS")}
+                <div className="bg-white border border-slate-200/80 p-1.5 rounded text-[9.5px] leading-normal text-slate-600">
+                  <div className="truncate font-semibold text-slate-800">
+                    {fbUser?.isAnonymous ? "🔒 Usuário Provisório" : (fbUser?.displayName || "Administrador")}
                   </div>
-                  <div className="truncate text-[8px] text-gray-500">
-                    {fbUser?.isAnonymous ? "Sincronização Ativa em Nuvem" : fbUser?.email}
+                  <div className="truncate text-[8px] text-slate-400">
+                    {fbUser?.isAnonymous ? "Sincronização Ativa na Nuvem" : fbUser?.email}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={fbLogout}
-                  className="w-full text-center text-[9px] font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1 bg-red-500/5 rounded border border-red-500/20 cursor-pointer transition-all uppercase"
+                  className="w-full text-center text-[9px] font-bold text-red-600 hover:text-red-700 hover:bg-red-50 py-1 bg-red-50/50 rounded border border-red-200 cursor-pointer transition-all uppercase"
                 >
                   Desconectar Conta
                 </button>
               </div>
             ) : (
-              <div className="space-y-2">
-                <p className="text-[9px] text-gray-400 leading-tight">
-                  Você está rodando em <strong className="text-amber-400 font-mono">modo de demonstração offline</strong>. Sincronize com a nuvem utilizando os métodos abaixo.
+              <div className="space-y-2 text-xs">
+                <p className="text-[9px] text-slate-500 leading-tight">
+                  Rodando em <strong className="text-emerald-700 font-sans">modo de demonstração offline</strong>. Sincronize com a nuvem utilizando os métodos abaixo:
                 </p>
 
                 {/* 1. ANONYMOUS AUTH: 100% IFRAME COMPATIBLE */}
                 <button
                   type="button"
                   onClick={fbLoginAnonymously}
-                  className="w-full font-bold text-center text-[9px] text-white bg-indigo-600 hover:bg-indigo-500 hover:scale-[1.01] py-1.5 rounded flex items-center justify-center gap-1 cursor-pointer transition-all uppercase shadow-md shadow-indigo-600/10 font-mono"
+                  className="w-full font-bold text-center text-[9px] text-white bg-emerald-600 hover:bg-emerald-700 py-1.5 rounded flex items-center justify-center gap-1 cursor-pointer transition-all uppercase shadow-sm"
                 >
                   <Database className="w-3 h-3" />
-                  Login Rápido de Testes (Sem Popup)
+                  Sincronização Direta Instantânea
                 </button>
 
                 {/* Info Text about iframe popup limitations */}
-                <p className="text-[8px] text-gray-500 leading-normal border-t border-[#1E293B] pt-1.5 font-mono">
-                  ⚠️ Popups do Google podem ser bloqueados no visualizador inline (Iframe). Se preferir usar conta Google real:
+                <p className="text-[8.5px] text-slate-400 leading-normal border-t border-slate-100 pt-1.5">
+                  Se preferir testar com sua conta Google real:
                 </p>
 
                 {/* 2. GOOGLE AUTH POPUP */}
                 <button
                   type="button"
                   onClick={fbLogin}
-                  className="w-full font-bold text-center text-[9px] text-[#090D14] bg-[#10B981] hover:bg-[#0FB27A] hover:scale-[1.01] py-1 rounded flex items-center justify-center gap-1 cursor-pointer transition-all uppercase shadow-md active:scale-[0.98] font-mono"
+                  className="w-full font-bold text-center text-[9px] text-emerald-800 bg-emerald-100 hover:bg-emerald-200 py-1 rounded flex items-center justify-center gap-1 cursor-pointer transition-all uppercase text-[9.5px]"
                 >
-                  <RefreshCw className="w-3 h-3 text-[#090D14]" />
+                  <RefreshCw className="w-3 h-3 text-emerald-750" />
                   Utilizar Conta Google
                 </button>
-
-                {/* 3. OPEN IN NEW TAB FOR ABSOLUTE ZERO BLOCKS */}
-                <a
-                  href={window.location.origin}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full font-bold text-center text-[9px] text-gray-300 bg-gray-800 hover:bg-gray-700 py-1 rounded flex items-center justify-center gap-1 cursor-pointer transition-all uppercase font-mono"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  Abrir em Nova Aba
-                </a>
               </div>
             )}
           </div>
           
           {/* Relógio de testes */}
-          <div className="bg-[#111827] border border-gray-800/60 rounded-lg p-2 space-y-1">
-            <span className="text-[8px] text-gray-400 font-bold flex items-center gap-1 uppercase">
-              <Clock className="w-3 h-3 text-[#3B82F6]" /> Relógio de Testes:
+          <div className="bg-slate-50 border border-slate-200/60 rounded-lg p-2 space-y-1">
+            <span className="text-[8px] text-slate-500 font-bold flex items-center gap-1 uppercase">
+              <Clock className="w-3 h-3 text-emerald-600" /> Relógio de Simulação:
             </span>
             <input 
               type="time" 
               value={systemMockTime}
               onChange={(e) => setSystemMockTime(e.target.value)}
-              className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2 py-1 font-bold text-center focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs"
+              className="w-full bg-white text-slate-800 border border-slate-200 rounded px-2 py-1 font-bold text-center focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs cursor-pointer"
             />
           </div>
 
@@ -2167,14 +2330,14 @@ export default function App() {
             onClick={() => setIsicLiteConnected(!isicLiteConnected)}
             className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border transition-all text-left text-[9.5px] cursor-pointer ${
               isicLiteConnected 
-                ? "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20 hover:bg-[#10B981]/15" 
-                : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/15"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
+                : "bg-amber-50 text-amber-700 border-amber-250"
             }`}
           >
-            <span className="font-bold">CONEXÃO iSIC:</span>
+            <span className="font-bold">STATUS DE SINAL:</span>
             <span className="flex items-center gap-1 font-extrabold uppercase">
-              <span className={`w-1.5 h-1.5 rounded-full ${isicLiteConnected ? "bg-[#10B981] animate-ping" : "bg-red-500"}`} />
-              {isicLiteConnected ? "ONLINE" : "MANUAL"}
+              <span className={`w-1.5 h-1.5 rounded-full ${isicLiteConnected ? "bg-emerald-500 animate-ping" : "bg-amber-500"}`} />
+              {isicLiteConnected ? "NUVEM PRO" : "LOCAL"}
             </span>
           </button>
 
@@ -2189,8 +2352,8 @@ export default function App() {
             }}
             className={`w-full text-[9px] py-1.5 rounded border font-semibold uppercase transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
               stats.sirenActive 
-                ? "bg-red-600 border-red-500 text-white animate-pulse" 
-                : "bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"
+                ? "bg-rose-600 border-rose-500 text-white animate-pulse" 
+                : "bg-rose-50/50 text-rose-605 border-rose-200 hover:bg-rose-50 hover:text-rose-700"
             }`}
           >
             <AlertTriangle className="w-3 h-3" />
@@ -2203,18 +2366,18 @@ export default function App() {
             onClick={() => setIsSimplifiedMode(!isSimplifiedMode)}
             className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border transition-all text-[9.5px] cursor-pointer ${
               isSimplifiedMode 
-                ? "bg-purple-500/20 text-purple-300 border-purple-500/30 hover:bg-purple-500/30" 
-                : "bg-gray-800/60 text-gray-400 border-gray-800 hover:text-white"
+                ? "bg-emerald-50 text-emerald-800 border-emerald-200" 
+                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800"
             }`}
             title="Alternar Banner de Ajuda Explanatório"
           >
-            <span className="font-semibold uppercase text-[9px]">VISTA:</span>
+            <span className="font-semibold uppercase text-[9px]">VISTA BANNER:</span>
             <span className="font-extrabold uppercase">{isSimplifiedMode ? "SLIM" : "PADRÃO"}</span>
           </button>
 
-          <div className="flex items-center justify-between text-[8px] text-gray-500 font-mono mt-1 pt-1.5 border-t border-gray-800/40">
-            <span className="flex items-center gap-0.5"><span className="w-1 h-1 bg-[#10B981] rounded-full animate-pulse" /> CLOUD SECURE</span>
-            <span>V3.5 VIRTUALIZED</span>
+          <div className="flex items-center justify-between text-[8px] text-slate-400 font-mono mt-1 pt-1.5 border-t border-slate-150">
+            <span className="flex items-center gap-0.5"><span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" /> CLOUD DIRECT APIS</span>
+            <span>AUTÔNOMO V3.5</span>
           </div>
         </div>
       </aside>
@@ -2232,15 +2395,13 @@ export default function App() {
         
         {/* UPPER BANNER ALERT & EXPLANATORY INTENT */}
         {!isSimplifiedMode && (
-          <div id="welcome_banner" className="bg-gradient-to-r from-[#111827] to-[#0E1524] border border-[#1E293B] rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div id="welcome_banner" className="bg-gradient-to-r from-emerald-700 via-emerald-800 to-teal-900 border border-emerald-605 rounded-2xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm text-white">
             <div className="space-y-1">
-              <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-                <Shield className="w-4 h-4 text-[#10B981]" /> Controle de Monitoramento e Integração de Alarme WhatsApp
+              <h2 className="text-sm font-extrabold text-white flex items-center gap-2 tracking-wide">
+                <Shield className="w-4 h-4 text-emerald-300" /> CONTROLE AUTOMÁTICO DE MONITORAMENTO COM INTEGRAÇÃO DE DISPARO DIRECT-TO-CLOUD
               </h2>
-              <p className="text-xs text-gray-400 max-w-4xl">
-                Simulador profissional e painel de controle do **Robust Vision**. Integramos detecção de vídeo analítico ao aplicativo 
-                <strong className="text-gray-200"> iSIC Lite</strong>. Somente movimentos no horário programado disparam alertas no WhatsApp, evitando spam. 
-                Mapeie liberação de DVRs por endereços <strong className="text-gray-250 text-gray-200">MAC corporativos e blocos de IP autorizados</strong>.
+              <p className="text-xs text-emerald-100 max-w-4xl leading-relaxed">
+                Painel administrativo e simulador do **Robust Vision**. Nosso sistema opera de forma **totalmente autônoma direto na nuvem** (sem depender de nenhum PC escravo local nas lojas). Conectamos via P2P Cloud APIs / DDNS ao seu DVR, interpretamos imagens usando Inteligência Artificial do Gemini e enviamos relatórios fotográficos de alertas ao celular cadastrado do cliente final via WhatsApp e webhook n8n de forma instantânea!
               </p>
             </div>
           </div>
@@ -2252,47 +2413,47 @@ export default function App() {
           <>
             {/* METRICS ROW */}
         <section id="metrics_dashboard" className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+          <div className="bg-white border border-slate-200/80 shadow-sm rounded-2xl p-5 flex items-center justify-between transition-all hover:shadow-md">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 font-mono">Deteções Analisadas</p>
-              <h3 className="text-2xl font-bold text-white font-mono mt-1">{stats.totalDetections}</h3>
-              <p className="text-[10px] text-gray-400 mt-0.5">Surtos auditores do DVR</p>
+              <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold font-sans">Detecções Analisadas</p>
+              <h3 className="text-2xl font-extrabold text-slate-800 font-sans mt-1">{stats.totalDetections}</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Surtos auditados do DVR</p>
             </div>
-            <div className="p-2.5 bg-gray-800/40 rounded-lg">
-              <Tv className="w-5 h-5 text-gray-400" />
+            <div className="p-3 bg-slate-100 rounded-xl text-slate-600">
+              <Tv className="w-5 h-5 text-slate-500" />
             </div>
           </div>
 
-          <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+          <div className="bg-white border border-slate-200/80 shadow-sm rounded-2xl p-5 flex items-center justify-between transition-all hover:shadow-md">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-red-400 font-mono">Ameaças Humanas (Alerta)</p>
-              <h3 className="text-2xl font-bold text-red-500 font-mono mt-1">{stats.realThreats}</h3>
-              <p className="text-[10px] text-gray-400 mt-0.5">Disparos críticos de invasão</p>
+              <p className="text-[10px] uppercase tracking-wider text-rose-600 font-bold font-sans">Ameaças Reais (Alerta)</p>
+              <h3 className="text-2xl font-extrabold text-rose-650 font-sans mt-1">{stats.realThreats}</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Invasões confirmadas por IA</p>
             </div>
-            <div className="p-2.5 bg-red-950/20 rounded-lg border border-red-900/30">
-              <AlertTriangle className="w-5 h-5 text-red-400" />
+            <div className="p-3 bg-rose-50 rounded-xl border border-rose-100 text-rose-600">
+              <AlertTriangle className="w-5 h-5 text-rose-500" />
             </div>
           </div>
 
-          <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+          <div className="bg-white border border-slate-200/80 shadow-sm rounded-2xl p-5 flex items-center justify-between transition-all hover:shadow-md">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-[#10B981] font-mono">Eventos Descartados (OK)</p>
-              <h3 className="text-2xl font-bold text-[#10B981] font-mono mt-1">{stats.falseAlarms}</h3>
-              <p className="text-[10px] text-gray-400 mt-1">Animais / Clima / Sombras</p>
+              <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-bold font-sans">Confirmados Seguros (OK)</p>
+              <h3 className="text-2xl font-extrabold text-emerald-650 font-sans mt-1">{stats.falseAlarms}</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Animais / Clima / Sombras</p>
             </div>
-            <div className="p-2.5 bg-[#10B981]/10 rounded-lg border border-[#10B981]/20">
-              <CheckCircle className="w-5 h-5 text-[#10B981]" />
+            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-emerald-600">
+              <CheckCircle className="w-5 h-5 text-emerald-650" />
             </div>
           </div>
 
-          <div className="bg-[#111827] border border-[#1E293B] rounded-xl p-4 flex items-center justify-between">
+          <div className="bg-white border border-slate-200/80 shadow-sm rounded-2xl p-5 flex items-center justify-between transition-all hover:shadow-md">
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-[#3B82F6] font-mono">Filtro de Descarte</p>
-              <h3 className="text-2xl font-bold text-[#3B82F6] font-mono mt-1">{stats.accuracyRate}%</h3>
-              <p className="text-[10px] text-gray-400 mt-0.5">Prevenção de Falsos Alertas</p>
+              <p className="text-[10px] uppercase tracking-wider text-emerald-700 font-bold font-sans">Filtro de Falso Alerta</p>
+              <h3 className="text-2xl font-extrabold text-emerald-650 font-sans mt-1">{stats.accuracyRate}%</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Prevenção ativa de alarmes falsos</p>
             </div>
-            <div className="p-2.5 bg-[#3B82F6]/10 rounded-lg border border-[#3B82F6]/20">
-              <Sliders className="w-5 h-5 text-[#3B82F6]" />
+            <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100 text-emerald-600">
+              <Sliders className="w-5 h-5 text-emerald-650" />
             </div>
           </div>
         </section>
@@ -2301,17 +2462,17 @@ export default function App() {
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
           {/* LEFT: MASTER MONITOR CONSOLE FRAME (7 COLS) */}
-          <div id="master_monitor_pane" className="lg:col-span-7 flex flex-col bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden relative">
-            <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex items-center justify-between">
+          <div id="master_monitor_pane" className="lg:col-span-7 flex flex-col bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm">
+            <div className="p-4 bg-slate-50/80 border-b border-slate-200/60 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#EF4444] blink-red" />
-                <span className="font-mono text-xs font-bold text-white uppercase tracking-wider">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="font-sans text-xs font-bold text-slate-800 uppercase tracking-wider">
                   MASTER CONTEXT FEED - {selectedFeed.name}
                 </span>
               </div>
-              <div className="text-[10px] font-mono text-[#10B981] flex items-center gap-1.5">
-                <Wifi className="w-3 h-3" />
-                <span>INTEGRAÇÃO iSIC LITE ATIVA</span>
+              <div className="text-[10px] font-sans text-emerald-705 font-bold flex items-center gap-1.5">
+                <Wifi className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                <span>NUVEM AUTÔNOMA DIRECT CFTV</span>
               </div>
             </div>
 
@@ -2478,23 +2639,23 @@ export default function App() {
           </div>
 
           {/* RIGHT: CAMERAS LIST GRID PANEL (5 COLS) */}
-          <div id="camera_grid_pane" className="lg:col-span-5 flex flex-col bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden">
-            <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] space-y-3">
+          <div id="camera_grid_pane" className="lg:col-span-5 flex flex-col bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-sm">
+            <div className="p-4 bg-slate-50/85 border-b border-slate-200/60 space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-white font-mono flex items-center gap-1.5">
-                    <Tv className="w-4 h-4 text-cyan-400 animate-pulse" /> Canais do Cliente (iSIC Lite)
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                    <Tv className="w-4 h-4 text-emerald-600" /> Canais do Cliente (iSIC Lite)
                   </h3>
-                  <p className="text-[10px] text-gray-500 mt-0.5 font-mono">Alterar cliente para ver canais específicos</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Mude de cliente para carregar canais vinculados</p>
                 </div>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200">
                   {activeViewingCameras.length} CANAIS
                 </span>
               </div>
 
               {/* DYNAMIC CLIENT MONITOR SELECTOR */}
-              <div className="space-y-1.5 p-2 bg-[#090D14] border border-gray-800 rounded-xl">
-                <label className="text-[9px] text-[#10B981] font-mono uppercase font-bold block">
+              <div className="space-y-1.5 p-3 bg-slate-100/70 border border-slate-200/85 rounded-xl">
+                <label className="text-[9px] text-emerald-800 uppercase font-bold block">
                   🏢 Selecionar Cliente p/ Monitoramento:
                 </label>
                 <select
@@ -2504,7 +2665,7 @@ export default function App() {
                     setLastAnalysisResult(null);
                     showAppAlert(`Carregado painel de monitoramento do cliente: ${e.target.value === "all_feeds" ? "Feed Geral" : registeredClients.find(c => c.id === e.target.value)?.tradingName}`, "Monitorando Cliente", "info");
                   }}
-                  className="w-full bg-[#111827] border border-gray-800 rounded px-2.5 py-2 text-xs text-white font-mono font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500 cursor-pointer"
+                  className="w-full bg-white border border-slate-250 rounded-lg px-2.5 py-2 text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                 >
                   <option value="all_feeds">🚨 FEED DE CANAIS SÃO SANDBOX (GERAL)</option>
                   {registeredClients.map((client) => (
@@ -2514,15 +2675,15 @@ export default function App() {
                   ))}
                 </select>
                 {selectedViewingClient && (
-                  <div className="flex items-center justify-between text-[9px] text-gray-400 font-mono pt-1">
+                  <div className="flex items-center justify-between text-[9px] text-slate-500 font-mono pt-1">
                     <span>📞 {selectedViewingClient.whatsapp}</span>
-                    <span className="text-[#10B981]">🕒 {selectedViewingClient.openTime}h - {selectedViewingClient.closeTime}h</span>
+                    <span className="text-emerald-700 font-bold">🕒 {selectedViewingClient.openTime}h - {selectedViewingClient.closeTime}h</span>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="p-4 divide-y divide-gray-800 overflow-y-auto max-h-[440px] space-y-3 flex-1">
+            <div className="p-4 divide-y divide-slate-100 overflow-y-auto max-h-[440px] space-y-3 flex-1 bg-white">
               {activeViewingCameras.map((feed) => {
                 const isSelected = feed.id === selectedFeedId;
                 return (
@@ -2533,11 +2694,11 @@ export default function App() {
                       setLastAnalysisResult(null);
                     }}
                     className={`pt-3 first:pt-0 group flex gap-3 cursor-pointer select-none transition-all ${
-                      isSelected ? "opacity-100" : "opacity-75 hover:opacity-100"
+                      isSelected ? "opacity-100 scale-[1.01]" : "opacity-80 hover:opacity-100 hover:scale-[1.01]"
                     }`}
                   >
                     {/* Thumbnail representation */}
-                    <div className="relative w-24 aspect-video bg-black rounded-lg overflow-hidden border border-gray-800 group-hover:border-[#10B981]/50 transition-colors shrink-0">
+                    <div className="relative w-24 aspect-video bg-slate-100 rounded-lg overflow-hidden border border-slate-200 group-hover:border-emerald-350 transition-all shrink-0 shadow-sm">
                       {feed.imageUrl ? (
                         <img 
                           src={feed.imageUrl} 
@@ -2546,16 +2707,16 @@ export default function App() {
                           referrerPolicy="no-referrer"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-[8px] font-mono text-gray-600">
-                          CAMERA
+                        <div className="w-full h-full flex items-center justify-center text-[8px] text-slate-400 font-bold">
+                          CAM
                         </div>
                       )}
                       
                       {/* Live status badge */}
-                      <span className={`absolute top-1 left-1 px-1 py-0.2 rounded font-mono text-[7px] font-extrabold ${
+                      <span className={`absolute top-1 left-1 px-1.5 py-0.2 rounded font-sans text-[7px] font-extrabold ${
                         feed.status === "ALERT" 
                           ? "bg-red-600 text-white animate-pulse" 
-                          : "bg-[#10B981]/90 text-black"
+                          : "bg-emerald-100 text-emerald-800 border border-emerald-200"
                       }`}>
                         {feed.status === "ALERT" ? "ALERTA" : "LIVE"}
                       </span>
@@ -2563,20 +2724,20 @@ export default function App() {
 
                     <div className="flex-1 space-y-1">
                       <div className="flex items-start justify-between min-w-0">
-                        <h4 className={`text-xs font-bold font-mono truncate ${isSelected ? "text-[#10B981]" : "text-gray-300"}`}>
+                        <h4 className={`text-xs font-bold truncate ${isSelected ? "text-emerald-700 font-extrabold" : "text-slate-700"}`}>
                           {feed.name}
                         </h4>
-                        <span className="text-[8px] font-mono text-gray-500 shrink-0">{feed.id.toUpperCase()}</span>
+                        <span className="text-[8px] font-mono text-slate-400 shrink-0 font-bold">{feed.id.toUpperCase()}</span>
                       </div>
                       
-                      <p className="text-[10px] text-gray-400 font-mono truncate">Local: {feed.location}</p>
+                      <p className="text-[10px] text-slate-500 truncate">Local: {feed.location}</p>
                       
-                      <div className="flex items-center gap-3 text-[9px] font-mono text-gray-500">
+                      <div className="flex items-center gap-3 text-[9px] text-slate-400 font-semibold">
                         <span className="flex items-center gap-1">
-                          <Sliders className="w-2.5 h-2.5" /> Noise: {feed.noiseLevel}%
+                          <Sliders className="w-2.5 h-2.5 text-slate-400" /> Ruído: {feed.noiseLevel}%
                         </span>
                         <span className="flex items-center gap-1">
-                          <Activity className="w-2.5 h-2.5" /> FPS: {feed.fps}
+                          <Activity className="w-2.5 h-2.5 text-slate-400" /> FPS: {feed.fps}
                         </span>
                       </div>
                     </div>
@@ -2586,9 +2747,9 @@ export default function App() {
             </div>
 
             {/* RE-INITIALIZATION ACTIONS */}
-            <div className="p-3 bg-[#0E1524] border-t border-[#1E293B] text-center">
-              <p className="text-[10px] text-gray-400 font-mono">
-                Selecione as câmeras padrão para simulação com o Gemini.
+            <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
+              <p className="text-[10px] text-slate-500 font-sans">
+                Selecione as câmeras acima para alternar a visualização master.
               </p>
             </div>
           </div>
@@ -6279,6 +6440,17 @@ export default function App() {
                         >
                           🐍 5. MICRO-AGENTE REAL
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setDvrGuideTab("disparos_dvr")}
+                          className={`px-2 py-1 text-[9px] font-bold rounded cursor-pointer transition-all ml-1 ${
+                            dvrGuideTab === "disparos_dvr"
+                              ? "bg-rose-500/15 text-rose-400 border border-rose-500/30 shadow font-extrabold animate-pulse"
+                              : "text-rose-400 hover:text-rose-300 border border-transparent"
+                          }`}
+                        >
+                          💥 6. DISPAROS DO DVR (SALA DE TESTES)
+                        </button>
                       </div>
                     </div>
 
@@ -6620,25 +6792,396 @@ def capturar_e_enviar():
         print(f"[!] Erro de conexão com servidor Cloud: {e}")
         return False
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     # Roda em loop como serviço perimetral
     print("=== MONITOR DE CFTV ROBUST VISION INICIADO ===")
     while True:
         try:
-            # Em produção, você pode disparador este script via Webhook de Alarme do próprio DVR (CGI)
-            # ou rodar em intervalos inteligentes de sensorização.
             capturar_e_enviar()
-            print("[*] Aguardando 10 segundos antes do próximo ciclo de ronda...")
+            print("[*] Aguardando 10 segundos antes do próximo ciclo...")
             time.sleep(10)
         except KeyboardInterrupt:
             print("[*] Agente perimetral finalizado pelo operador.")
-            break`}
+            break
+`}
                             </div>
                           </div>
 
-                          <div className="bg-[#1C2638]/40 p-3 rounded-lg border border-dashed border-emerald-500/10 text-gray-400 text-[10px] leading-relaxed font-sans mt-2">
-                            <span className="text-emerald-400 font-bold block mb-1">💡 Dica de Funcionamento Real:</span>
-                            A maioria dos DVRs Intelbras possui um campo chamado <strong>"Evento de Analíticos / Linha Virtual / IVS"</strong> com o campo <strong>"Disparar HTTP / Envio de Foto"</strong> nas configurações avançadas do equipamento. Você pode configurar o seu DVR para disparar uma requisição diretamente para o micro-agente local ou para o WhatsApp de forma instantânea sempre que alguém cruzar a linha virtual perimetral!
+                          <div className="bg-emerald-50/50 p-4 rounded-xl border border-dashed border-emerald-250 text-slate-600 text-[10px] leading-relaxed font-sans mt-2 shadow-inner">
+                            <span className="text-emerald-800 font-bold block mb-1">💡 Dica de Funcionamento Real Direct-to-Cloud:</span>
+                            A maioria dos DVRs modernos possui um campo chamado <strong>"Evento de Intelbras Analíticos / Linha Virtual / IVS"</strong> com o campo <strong>"Disparar HTTP / Envio de Foto ao Servidor"</strong> nas configurações avançadas do equipamento. Você pode configurar o seu DVR para disparar uma requisição diretamente para nossa cloud direct ou para o WhatsApp de forma instantânea sempre que alguém cruzar a linha virtual perimetral sem nenhum PC local!
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {dvrGuideTab === "disparos_dvr" && (
+                      <div className="space-y-5 pt-1 font-sans text-slate-700">
+                        {/* HEADER BANNER */}
+                        <div className="bg-gradient-to-r from-emerald-50 via-white to-slate-50 border border-emerald-200 p-5 rounded-2xl text-xs shadow-sm">
+                          <span className="text-emerald-800 font-extrabold uppercase text-[10px] tracking-wider block font-sans">
+                            💥 SALA DE TESTES INTERATIVOS DE DISPARO DE DVR
+                          </span>
+                          <p className="text-slate-650 mt-1 leading-relaxed">
+                            Simule e valide em tempo real como o sistema do Robust Vision conecta com seus DVRs residenciais ou comerciais. 
+                            <strong> Suba fotos direto do seu computador PC</strong> ou selecione presets para disparar alertas com mídia e fotografias direto ao celular do cliente final via WhatsApp e webhook n8n!
+                          </p>
+                        </div>
+
+                        {/* WORKSPACE REGION */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                          {/* LEFT COLUMN: CAMERA SELECTOR & IMAGE INGEST */}
+                          <div className="lg:col-span-6 space-y-4">
+                            {/* DVR SELECTION */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                              <label className="text-slate-850 font-sans text-[10px] uppercase font-bold block flex items-center gap-1">
+                                <Tv className="w-3.5 h-3.5 text-emerald-600 animate-pulse" /> 1. Sincronizar com o Equipamento DVR:
+                              </label>
+                              <select
+                                value={testDvrSelectedId}
+                                onChange={(e) => setTestDvrSelectedId(e.target.value)}
+                                className="w-full bg-white text-slate-800 border border-slate-250 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-semibold"
+                              >
+                                {intelbrasDvrs.map(dvr => (
+                                  <option key={dvr.id} value={dvr.id}>
+                                    {dvr.name} ({dvr.addressOrSerial})
+                                  </option>
+                                ))}
+                              </select>
+
+                              {/* CHANNELS GRID */}
+                              <div className="space-y-1.5 pt-1">
+                                <span className="text-slate-500 text-[9px] uppercase font-bold block">
+                                  Selecione o Canal Ativo do DVR para Extrair Foto:
+                                </span>
+                                <div className="grid grid-cols-4 gap-2">
+                                  {Array.from({ length: 8 }).map((_, idx) => {
+                                    const chNum = idx + 1;
+                                    const isSelected = testDvrSelectedChannel === chNum;
+                                    return (
+                                      <button
+                                        type="button"
+                                        key={chNum}
+                                        onClick={() => setTestDvrSelectedChannel(chNum)}
+                                        className={`py-2 px-1 rounded-xl text-center text-[10px] border transition-all cursor-pointer ${
+                                          isSelected
+                                            ? "bg-emerald-50 text-emerald-700 border-emerald-350 font-bold shadow-sm"
+                                            : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700 font-semibold"
+                                        }`}
+                                      >
+                                        <div className="text-[9px] text-slate-400 opacity-60">CAM</div>
+                                        <div className="text-xs">CH 0{chNum}</div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* SOURCE IMAGE INGEST */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                              <div className="space-y-1">
+                                <span className="text-slate-850 font-sans text-[10px] uppercase font-bold block flex items-center gap-1">
+                                  <Upload className="w-3.5 h-3.5 text-emerald-600" /> 2. Origem da Captura (Foto do DVR):
+                                </span>
+                                <p className="text-[9px] text-slate-500 leading-normal">
+                                  Defina qual frame representa a violação da câmera do DVR correspondente neste canal selecionado.
+                                </p>
+                              </div>
+
+                              {/* PRESENTS SELECTORS */}
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTestDvrEventType("intruder");
+                                    setTestDvrCustomImage("");
+                                  }}
+                                  className={`p-2.5 rounded-xl text-left border flex items-center gap-2 transition-all cursor-pointer ${
+                                    testDvrEventType === "intruder" && !testDvrCustomImage
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-250 font-bold"
+                                      : "bg-slate-50 text-slate-600 border-slate-200 hover:text-slate-800"
+                                  }`}
+                                >
+                                  <span className="text-lg">👤</span>
+                                  <div className="leading-tight">
+                                    <div className="text-[10px] font-bold">Invasão Humana</div>
+                                    <div className="text-[8px] text-slate-400">Muro Perimetral</div>
+                                  </div>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTestDvrEventType("vehicle");
+                                    setTestDvrCustomImage("");
+                                  }}
+                                  className={`p-2.5 rounded-xl text-left border flex items-center gap-2 transition-all cursor-pointer ${
+                                    testDvrEventType === "vehicle" && !testDvrCustomImage
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-250 font-bold"
+                                      : "bg-slate-50 text-slate-600 border-slate-200 hover:text-slate-800"
+                                  }`}
+                                >
+                                  <span className="text-lg">🚗</span>
+                                  <div className="leading-tight">
+                                    <div className="text-[10px] font-bold">Carro Suspeito</div>
+                                    <div className="text-[8px] text-slate-400">Fora do Expediente</div>
+                                  </div>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTestDvrEventType("cat");
+                                    setTestDvrCustomImage("");
+                                  }}
+                                  className={`p-2.5 rounded-xl text-left border flex items-center gap-2 transition-all cursor-pointer ${
+                                    testDvrEventType === "cat" && !testDvrCustomImage
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-250 font-bold"
+                                      : "bg-slate-50 text-slate-600 border-slate-200 hover:text-slate-800"
+                                  }`}
+                                >
+                                  <span className="text-lg">🐱</span>
+                                  <div className="leading-tight">
+                                    <div className="text-[10px] font-bold">Falso: Animal</div>
+                                    <div className="text-[8px] text-slate-400">Prevenção Esperta</div>
+                                  </div>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setTestDvrEventType("wind");
+                                    setTestDvrCustomImage("");
+                                  }}
+                                  className={`p-2.5 rounded-xl text-left border flex items-center gap-2 transition-all cursor-pointer ${
+                                    testDvrEventType === "wind" && !testDvrCustomImage
+                                      ? "bg-emerald-50 text-emerald-800 border-emerald-250 font-bold"
+                                      : "bg-slate-50 text-slate-600 border-slate-200 hover:text-slate-800"
+                                  }`}
+                                >
+                                  <span className="text-lg">🍃</span>
+                                  <div className="leading-tight">
+                                    <div className="text-[10px] font-bold">Falso: Ventania</div>
+                                    <div className="text-[8px] text-slate-400">Ignorar Árvore</div>
+                                  </div>
+                                </button>
+                              </div>
+
+                              {/* PC FILE UPLOAD ZONE */}
+                              <div className="border border-dashed border-slate-300 hover:border-emerald-450 hover:bg-emerald-50/20 rounded-2xl p-4 bg-slate-50 transition-colors relative">
+                                <input
+                                  id="dvr-pc-file-upload"
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={handleDvrImageUpload}
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                />
+                                <div className="flex flex-col items-center justify-center text-center space-y-1.5 py-1">
+                                  <div className="p-2 bg-emerald-100 rounded-full text-emerald-700">
+                                    <Upload className="w-5 h-5" />
+                                  </div>
+                                  <p className="text-[10.5px] font-bold text-slate-800">Carregue qualquer foto do seu PC/Celular!</p>
+                                  <p className="text-[8px] text-slate-400 leading-normal max-w-xs">
+                                    Arraste ou clique para enviar foto representativa capturada da câmera do DVR real.
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* REAL IMAGE PREVIEW OF SELECTED FEED */}
+                              <div className="space-y-1.5 pt-1">
+                                <span className="text-slate-500 text-[9px] uppercase font-bold block">
+                                  Quadro Analisado Original:
+                                </span>
+                                <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-100 aspect-video flex items-center justify-center shadow-inner">
+                                  {testDvrEventType === "custom" && testDvrCustomImage ? (
+                                    <img 
+                                      src={testDvrCustomImage} 
+                                      alt="DVR Custom PC Ingest" 
+                                      className="w-full h-full object-cover"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  ) : (
+                                    <img 
+                                      src={
+                                        testDvrEventType === "intruder" 
+                                          ? "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=800&auto=format&fit=crop"
+                                          : testDvrEventType === "vehicle"
+                                            ? "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&auto=format&fit=crop"
+                                            : testDvrEventType === "cat"
+                                              ? "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&auto=format&fit=crop"
+                                              : "https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=800&auto=format&fit=crop"
+                                      } 
+                                      alt="DVR Preset CCTV Feed" 
+                                      className="w-full h-full object-cover"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                  )}
+                                  {/* INFOBAR OVERLAY */}
+                                  <div className="absolute top-2 left-2 bg-black/85 text-white border border-gray-800 font-mono text-[8px] px-2 py-0.5 rounded flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping"></span>
+                                    <span>DVR INTEGRATION FEED: CH-0{testDvrSelectedChannel}</span>
+                                  </div>
+                                  <div className="absolute bottom-2 right-2 bg-black/75 text-gray-400 font-mono text-[8px] px-2 py-0.5 rounded">
+                                    {new Date().toISOString().slice(0, 10).replace(/-/g, "/")} {new Date().toLocaleTimeString("pt-BR")}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* RIGHT COLUMN: ACTION AND WHATSAPP PREVIEW */}
+                          <div className="lg:col-span-6 space-y-4">
+                            {/* DISPATCH AND PIPELINE SETTINGS */}
+                            <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                              <span className="text-slate-800 font-sans text-[10px] uppercase font-bold block flex items-center gap-1">
+                                <Send className="w-3.5 h-3.5 text-emerald-600" /> 3. Configurações de Envio e Destinatário:
+                              </span>
+
+                              {/* SELECT CLIENT */}
+                              <div className="space-y-1.5">
+                                <label className="text-[9px] text-slate-500 uppercase block">Cliente / Comércio Ligado:</label>
+                                <select
+                                  value={testDvrSelectedClientId}
+                                  onChange={(e) => setTestDvrSelectedClientId(e.target.value)}
+                                  className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                                >
+                                  <option value="">-- CLIENTE DEMONSTRATIVO POR DEFAULT --</option>
+                                  {registeredClients.map((client) => (
+                                    <option key={client.id} value={client.id}>
+                                      {client.tradingName} ({client.whatsapp})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {/* TARGET PHONE */}
+                              <div className="space-y-1.5">
+                                <label className="text-[9px] text-slate-500 uppercase block">Telefone para Destino de Teste (WhatsApp Override):</label>
+                                <input
+                                  type="text"
+                                  placeholder="+5561998308655"
+                                  value={testDvrCustomPhone}
+                                  onChange={(e) => setTestDvrCustomPhone(e.target.value)}
+                                  className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 placeholder-slate-400"
+                                />
+                                <p className="text-[8px] text-slate-450 mt-0.5 leading-normal">
+                                  Insira seu celular com DDI (+55) para simular o recebimento direto desse alerta na sua mão.
+                                </p>
+                              </div>
+
+                              {/* TRIGGER BUTTON */}
+                              <button
+                                type="button"
+                                disabled={testDvrIsRunning}
+                                onClick={handleTriggerDvrEventSimulation}
+                                className={`w-full py-3.5 px-4 rounded-xl text-xs uppercase font-extrabold tracking-wider cursor-pointer transition-all flex items-center justify-center gap-2 ${
+                                  testDvrIsRunning
+                                    ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                                    : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-500/10 active:scale-98"
+                                }`}
+                              >
+                                {testDvrIsRunning ? (
+                                  <>
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                                    <span>Processando Integrador do Alarme...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Zap className="w-3.5 h-3.5 animate-pulse text-yellow-300" />
+                                    <span>Disparar Alerta Completo no Zap!</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+
+                            {/* PIPELINE PROGRESS & LOGGER */}
+                            {testDvrLogs.length > 0 && (
+                              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-4 shadow-sm font-sans">
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                                  <span className="text-[10px] text-slate-800 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                    <Database className="w-3.5 h-3.5 text-emerald-600" /> Pipeline de Análise e Disparos
+                                  </span>
+                                  <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-150 uppercase font-extrabold animate-pulse">
+                                    {testDvrFeedbackStatus}
+                                  </span>
+                                </div>
+
+                                {/* VISUAL STEPPERS */}
+                                <div className="grid grid-cols-5 gap-1.5 text-center text-[7.5px] uppercase font-bold text-slate-400 pb-2 border-b border-slate-100">
+                                  <div className={testDvrFeedbackStatus === "capturing" ? "text-amber-500 animate-pulse" : ["analyzing", "saving", "dispatching", "success"].includes(testDvrFeedbackStatus) ? "text-emerald-600 font-extrabold" : ""}>
+                                    <div className="text-sm">📡</div>
+                                    <div className="mt-1">DVR HTTP</div>
+                                  </div>
+                                  <div className={testDvrFeedbackStatus === "analyzing" ? "text-amber-500 animate-pulse" : ["saving", "dispatching", "success"].includes(testDvrFeedbackStatus) ? "text-emerald-600 font-extrabold" : ""}>
+                                    <div className="text-sm">📸</div>
+                                    <div className="mt-1">SNAP CAP</div>
+                                  </div>
+                                  <div className={testDvrFeedbackStatus === "saving" ? "text-amber-500 animate-pulse" : ["dispatching", "success"].includes(testDvrFeedbackStatus) ? "text-emerald-600 font-extrabold" : ""}>
+                                    <div className="text-sm">🧠</div>
+                                    <div className="mt-1">IA GEMINI</div>
+                                  </div>
+                                  <div className={testDvrFeedbackStatus === "dispatching" ? "text-amber-500 animate-pulse" : ["success"].includes(testDvrFeedbackStatus) ? "text-emerald-600 font-extrabold" : ""}>
+                                    <div className="text-sm">💾</div>
+                                    <div className="mt-1">SUPABASE</div>
+                                  </div>
+                                  <div className={testDvrFeedbackStatus === "success" ? "text-emerald-600 font-extrabold animate-bounce" : ""}>
+                                    <div className="text-sm">💬</div>
+                                    <div className="mt-1">ROBUST ZAP</div>
+                                  </div>
+                                </div>
+
+                                {/* LOG TERMINAL DISPLAY */}
+                                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-[10px] text-slate-700 space-y-1.5 max-h-36 overflow-y-auto leading-normal font-mono shadow-inner">
+                                  {testDvrLogs.map((log, lIdx) => (
+                                    <p key={lIdx} className={log.includes("ALERTA") ? "text-emerald-800 font-bold" : log.includes("💬") ? "text-emerald-600 font-bold" : log.includes("✓") ? "text-emerald-700 font-bold" : "text-slate-655"}>
+                                      {log}
+                                    </p>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* SIMULATED WHATSAPP MOCKUP FOR THE LAST DELIVERED GATILHO */}
+                            <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-4 shadow-sm font-sans">
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                  <span className="text-slate-800 text-[10px] font-bold uppercase tracking-wider font-sans">Celular do Cliente (Simulador WhatsApp Web)</span>
+                                </div>
+                                <span className="text-[8px] text-slate-400 font-mono">Dispositivo Virtual NDS</span>
+                              </div>
+
+                              <div className="bg-[#efeae2] rounded-xl p-3.5 border border-slate-200 max-h-[220px] overflow-y-auto space-y-2.5 pattern-bg relative min-h-[140px] flex flex-col justify-end shadow-inner">
+                                {testDvrWhatsappQueue.length === 0 ? (
+                                  <div className="h-full flex flex-col items-center justify-center text-center text-slate-505 py-6">
+                                    <MessageSquare className="w-7 h-7 text-slate-400 mb-1" />
+                                    <p className="text-[9px] text-slate-700 font-sans uppercase font-bold tracking-normal">Nenhuma Notificação Pendente</p>
+                                    <p className="text-[8px] text-slate-450 max-w-xs mt-0.5">Defina os canais do seu DVR, suba a foto do computador e as mensagens corporativas enviadas aparecerão instantaneamente aqui.</p>
+                                  </div>
+                                ) : (
+                                  testDvrWhatsappQueue.slice(0, 1).map((wa) => (
+                                    <div key={wa.id} className="self-end bg-[#d9fdd3] text-slate-800 text-[11px] rounded-xl p-3.5 max-w-[85%] shadow border border-emerald-150 space-y-2 relative">
+                                      {wa.imageUrl && (
+                                        <div className="rounded-lg overflow-hidden border border-slate-200/60 shadow-sm mb-1 bg-white">
+                                          <img 
+                                            src={wa.imageUrl} 
+                                            alt="WhatsApp Alert Snapshot" 
+                                            className="w-full max-h-36 object-cover" 
+                                            referrerPolicy="no-referrer"
+                                          />
+                                        </div>
+                                      )}
+                                      <p className="whitespace-pre-wrap font-sans text-[10.5px] leading-relaxed break-words">{wa.message}</p>
+                                      <div className="text-[8px] text-slate-450 text-right font-sans ml-4 select-none mt-1">
+                                        {wa.timestamp} ✓✓
+                                      </div>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+
                           </div>
                         </div>
                       </div>
@@ -6780,44 +7323,44 @@ if __name__ == "__main__":
               </div>
 
               {/* APPLE APP STORE DETAIL GUIDE */}
-              <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-5 space-y-4 font-sans border-gray-850">
-                <div className="flex items-center justify-between pb-3 border-b border-gray-800">
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-4 shadow-sm font-sans">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400 font-mono">PASSO A PASSO #02</span>
-                    <h3 className="text-xs font-bold text-white uppercase tracking-wider font-mono">🍏 Publicar na App Store (Apple iOS)</h3>
+                    <span className="text-[10px] font-bold text-slate-400 font-mono">PASSO A PASSO #02</span>
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">🍏 Publicar na App Store (Apple iOS)</h3>
                   </div>
-                  <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 font-mono">REQUISITO MACOS</span>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-150 font-mono">REQUISITO MACOS</span>
                 </div>
 
-                <div className="text-xs text-gray-300 space-y-3.5 leading-relaxed">
+                <div className="text-xs text-slate-600 space-y-3.5 leading-relaxed">
                   <p>
                     Para o ecossistema iOS da Apple, a portabilidade através do Xcode com Capacitor mantém toda a elegância visual do Tailwind CSS intocada:
                   </p>
 
-                  <ol className="list-decimal list-inside space-y-2.5 text-gray-400 font-mono text-[11px] bg-[#090D14] p-4 rounded-xl border border-gray-900 leading-relaxed font-mono">
+                  <ol className="list-decimal list-inside space-y-2.5 text-slate-600 font-mono text-[11px] bg-slate-50 p-4 rounded-xl border border-slate-205 leading-relaxed">
                     <li>
-                      <strong className="text-white">Requisito de Sistema:</strong> Diferente do Android, a compilação do iOS exige obrigatoriamente um computador macOS (Mac Mini, Macbook, iMac) rodando o Xcode oficial.
+                      <strong className="text-slate-800">Requisito de Sistema:</strong> Diferente do Android, a compilação do iOS exige obrigatoriamente um computador macOS (Mac Mini, Macbook, iMac) rodando o Xcode oficial.
                     </li>
                     <li>
-                      <strong className="text-white">Abra o projeto nativo:</strong> Execute o comando <code className="text-blue-400 bg-black/40 px-1 rounded font-bold">npx cap open ios</code>. O Xcode abrirá imediatamente o projeto autogerado do iOS.
+                      <strong className="text-slate-800">Abra o projeto nativo:</strong> Execute o comando <code className="text-emerald-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded font-bold">npx cap open ios</code>. O Xcode abrirá imediatamente o projeto autogerado do iOS.
                     </li>
                     <li>
-                      <strong className="text-white">Configure a Assinatura (Signing):</strong> Nas propriedades do projeto no Xcode, configure o seu <code className="text-gray-300">Signing & Capabilities</code> associando sua conta Apple Developer ($99 USD anuais).
+                      <strong className="text-slate-800">Configure a Assinatura (Signing):</strong> Nas propriedades do projeto no Xcode, configure o seu <code className="text-slate-700">Signing & Capabilities</code> associando sua conta Apple Developer ($99 USD anuais).
                     </li>
                     <li>
-                      <strong className="text-white">Defina os Ícones (AppIcon):</strong> Abra o arquivo <code className="text-gray-300">Assets.xcassets</code> e arraste a imagem oficial da Robust Vision para preencher todos os formatos de retina.
+                      <strong className="text-slate-800">Defina os Ícones (AppIcon):</strong> Abra o arquivo <code className="text-slate-700">Assets.xcassets</code> e arraste a imagem oficial da Robust Vision para preencher todos os formatos de retina.
                     </li>
                     <li>
-                      <strong className="text-white">Edite o Info.plist:</strong> Para que a Apple aprove o app de segurança, insira as justificativas de privacidade em strings do Info.plist para uso do CFTV (Camera Usage Description).
+                      <strong className="text-slate-800">Edite o Info.plist:</strong> Para que a Apple aprove o app de segurança, insira as justificativas de privacidade em strings do Info.plist para uso do CFTV (Camera Usage Description).
                     </li>
                     <li>
-                      <strong className="text-white">Archive e Upload:</strong> Selecione no Xcode o dispositivo genérico <code className="text-gray-300">Any iOS Device</code>, vá em <code className="text-gray-300">Product</code> → <code className="text-gray-350 font-mono">Archive</code>, clique em <code className="text-gray-300 font-mono">Distribute App</code> e envie diretamente à nuvem Apple Connect!
+                      <strong className="text-slate-800">Archive e Upload:</strong> Selecione no Xcode o dispositivo genérico <code className="text-slate-700">Any iOS Device</code>, vá em <code className="text-slate-755">Product</code> → <code className="text-slate-755 font-mono">Archive</code>, clique em <code className="text-slate-755 font-mono">Distribute App</code> e envie diretamente à nuvem Apple Connect!
                     </li>
                   </ol>
 
-                  <div className="p-3 bg-purple-600/10 border border-purple-500/10 rounded-xl text-[11px] flex gap-2">
-                    <span className="text-purple-400 font-bold shrink-0 font-mono">📱 WEB RESPONSIVE:</span>
-                    <p className="text-gray-300 font-mono leading-relaxed">
+                  <div className="p-3 bg-emerald-50/50 border border-emerald-150 rounded-xl text-[11px] flex gap-2">
+                    <span className="text-emerald-800 font-bold shrink-0 font-mono">📱 WEB RESPONSIVE:</span>
+                    <p className="text-slate-600 leading-relaxed">
                       A visualização em formato de iFrame será automaticamente desativada no aplicativo móvel nativo, garantindo que o seu cliente veja o painel principal em modo 100% tela cheia nativa extremamente fluido.
                     </p>
                   </div>
@@ -6827,28 +7370,31 @@ if __name__ == "__main__":
             </div>
 
             {/* INTERACTIVE PLAYGROUND SHELL */}
-            <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-5 font-mono text-xs space-y-3">
-              <h4 className="text-white font-bold uppercase text-xs">🛠️ Comandos de Deploy Rápido para seu Prompt de Comando</h4>
-              <p className="text-gray-400 text-[11px]">Pressione o botão para copiar e disparar no seu terminal local do projeto sempre que atualizar os dados do painel:</p>
+            <div className="bg-white border border-slate-200/80 rounded-2xl p-5 font-sans text-xs space-y-3 shadow-sm">
+              <h4 className="text-slate-800 font-bold uppercase text-xs flex items-center gap-1.5">
+                <Smartphone className="w-4 h-4 text-emerald-600" />
+                🛠️ Comandos de Deploy Rápido para seu Prompt de Comando
+              </h4>
+              <p className="text-slate-500 text-[11px]">Pressione o botão para copiar e disparar no seu terminal local do projeto sempre que atualizar os dados do painel:</p>
               
-              <div className="bg-[#03070E] p-4 rounded-xl border border-gray-800 space-y-3">
-                <div className="flex items-center justify-between border-b border-gray-900 pb-2">
-                  <span className="text-[10px] text-gray-500 font-bold">TERMINAL DE CONVERSÃO EXECUTÁVEL COMPOSTO</span>
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="text-[10px] text-slate-400 font-bold font-mono">TERMINAL DE CONVERSÃO EXECUTÁVEL COMPOSTO</span>
                   <button
                     type="button"
                     onClick={() => {
                       navigator.clipboard.writeText("npm run build && npx cap sync && npx cap open android");
                       showAppAlert("Comando de compilação sincronizado copiado! Cole no seu prompt do Node local para disparar as ferramentas automáticas no seu computador.", "Copiado para Área de Transferência", "success");
                     }}
-                    className="hover:text-amber-400 text-amber-500 transition-colors text-[10px] uppercase font-bold underline cursor-pointer"
+                    className="hover:text-emerald-700 text-emerald-600 transition-colors text-[10px] uppercase font-bold underline cursor-pointer"
                   >
                     Copiar Linha de Comando Inteira
                   </button>
                 </div>
-                <div className="text-emerald-400 text-[11px] select-all leading-relaxed whitespace-pre font-mono">
-                  <div>npm run build <span className="text-gray-600"># Compila o Front-End React em arquivos estáticos (dist/)</span></div>
-                  <div>npx cap sync   <span className="text-gray-600"># Transfere e atualiza os binários estáticos para o Android e iOS nativo</span></div>
-                  <div>npx cap open android <span className="text-gray-600 font-bold"># Dispara o Android Studio pronto para gerar a versão assinado Play Store (.AAB)</span></div>
+                <div className="text-slate-700 text-[11px] select-all leading-relaxed whitespace-pre font-mono">
+                  <div>npm run build <span className="text-slate-400"># Compila o Front-End React em arquivos estáticos (dist/)</span></div>
+                  <div>npx cap sync   <span className="text-slate-400"># Transfere e atualiza os binários estáticos para o Android e iOS nativo</span></div>
+                  <div>npx cap open android <span className="text-emerald-700 font-bold"># Dispara o Android Studio pronto para gerar a versão assinado Play Store (.AAB)</span></div>
                 </div>
               </div>
             </div>
@@ -6857,16 +7403,16 @@ if __name__ == "__main__":
         )}
 
         {/* INTERACTIVE TEST PANEL & SIMULATOR */}
-        <section id="test_simulator_section" className="bg-[#111827] border border-[#1E293B] rounded-2xl overflow-hidden mb-6 font-sans">
-          <div className="p-4 bg-[#0E1524] border-b border-[#1E293B] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <section id="test_simulator_section" className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden mb-6 font-sans shadow-sm">
+          <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-white font-mono flex items-center gap-2">
-                <Play className="w-4 h-4 text-[#10B981] animate-pulse" /> Painel de Testes & Simulador de Reconhecimento
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 font-sans flex items-center gap-2">
+                <Play className="w-4 h-4 text-emerald-600 animate-pulse" /> Painel de Testes & Simulador de Reconhecimento
               </h3>
-              <p className="text-[10px] text-gray-500 mt-0.5">Sua central interativa para ver como estão funcionando os disparos de imagens/alertas por cliente no Zap</p>
+              <p className="text-[10px] text-slate-500 mt-0.5">Sua central interativa para ver como estão funcionando os disparos de imagens/alertas por cliente no Zap</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[9px] px-2 py-0.5 rounded-full font-mono bg-[#10B981]/15 text-[#10B981] font-bold border border-[#10B981]/25">
+              <span className="text-[9px] px-2 py-0.5 rounded-full font-mono bg-emerald-50 text-emerald-700 font-bold border border-emerald-250">
                 ATIVO EM SESSÃO
               </span>
             </div>
@@ -6875,18 +7421,18 @@ if __name__ == "__main__":
           <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
             {/* Left Controls Column */}
             <div className="lg:col-span-5 space-y-4">
-              <div className="bg-[#090D14] p-4 rounded-xl border border-gray-800/60 space-y-3.5">
+              <div className="bg-white p-4.5 rounded-xl border border-slate-200 space-y-3.5">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] text-gray-400 uppercase font-mono tracking-wider block">1. Selecione o Cliente de Teste</label>
+                  <label className="text-[10px] text-slate-500 uppercase font-sans font-bold tracking-wider block">1. Selecione o Cliente de Teste</label>
                   {registeredClients.length === 0 ? (
-                    <div className="p-2 bg-red-500/10 border border-red-500/20 text-red-400 rounded text-xs font-mono">
+                    <div className="p-2 bg-red-50 border border-red-200 text-red-700 rounded text-xs">
                       Nenhum cliente cadastrado. Cadastre um cliente na aba "Administração" para testar.
                     </div>
                   ) : (
                     <select
                       value={testSelectedClientId}
                       onChange={(e) => setTestSelectedClientId(e.target.value)}
-                      className="w-full bg-[#111827] border border-gray-800 rounded-lg p-2 text-xs font-mono text-white focus:outline-none focus:border-[#10B981]/50 focus:ring-1 focus:ring-[#10B981]/35 cursor-pointer"
+                      className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                     >
                       {registeredClients.map((client) => (
                         <option key={client.id} value={client.id}>
@@ -6899,11 +7445,11 @@ if __name__ == "__main__":
 
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-gray-400 uppercase font-mono tracking-wider block">2. Câmera / Feed</label>
+                    <label className="text-[10px] text-slate-500 uppercase font-sans font-bold tracking-wider block">2. Câmera / Feed</label>
                     <select
                       value={testSelectedCameraId}
                       onChange={(e) => setTestSelectedCameraId(e.target.value)}
-                      className="w-full bg-[#111827] border border-gray-800 rounded-lg p-2 text-xs font-mono text-white focus:outline-none focus:border-[#10B981]/50 cursor-pointer"
+                      className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                     >
                       {(() => {
                         const selClient = registeredClients.find(c => c.id === testSelectedClientId);
@@ -6918,11 +7464,11 @@ if __name__ == "__main__":
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[10px] text-gray-400 uppercase font-mono tracking-wider block">3. Tipo de Detecção</label>
+                    <label className="text-[10px] text-slate-500 uppercase font-sans font-bold tracking-wider block">3. Tipo de Detecção</label>
                     <select
                       value={testEventType}
                       onChange={(e) => setTestEventType(e.target.value as any)}
-                      className="w-full bg-[#111827] border border-gray-800 rounded-lg p-2 text-xs font-mono text-white focus:outline-none focus:border-[#10B981]/50 cursor-pointer"
+                      className="w-full bg-white border border-slate-250 rounded-lg p-2.5 text-xs text-slate-800 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
                     >
                       <option value="intruder">👤 Invasor Humano (ALERTA)</option>
                       <option value="vehicle">🚗 Veículo Suspeito (ALERTA)</option>
@@ -6936,63 +7482,63 @@ if __name__ == "__main__":
                   type="button"
                   disabled={testIsRunning || registeredClients.length === 0}
                   onClick={handleTriggerTestSimulation}
-                  className={`w-full py-2.5 px-4 rounded-xl font-mono text-xs uppercase font-bold tracking-wider cursor-pointer select-none transition-all flex items-center justify-center gap-2 ${
+                  className={`w-full py-3 px-4 rounded-xl text-xs uppercase font-extrabold tracking-wider cursor-pointer select-none transition-all flex items-center justify-center gap-2 ${
                     testIsRunning 
-                      ? "bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed" 
-                      : "bg-[#10B981] hover:bg-[#059669] text-[#090D14] shadow-md shadow-[#10B981]/15 active:scale-97"
+                      ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed" 
+                      : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-500/10 active:scale-97"
                   }`}
                 >
                   {testIsRunning ? (
                     <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-gray-500" /> Processando Teste de Transmissão...
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" /> Processando Teste de Transmissão...
                     </>
                   ) : (
                     <>
-                      <Send className="w-3.5 h-3.5" /> Disparar Reconhecimento de Teste
+                      <Send className="w-3.5 h-3.5 text-white" /> Disparar Reconhecimento de Teste
                     </>
                   )}
                 </button>
               </div>
 
-              <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl text-[10px] font-mono text-gray-400 leading-relaxed">
-                <span className="text-blue-400 font-bold block mb-1">💡 COMO ESTÁ FUNCIONANDO O DISPARO DE IMAGENS & VÍDEO?</span>
+              <div className="p-3 bg-emerald-50/50 border border-emerald-150 rounded-xl text-[10px] font-sans text-slate-600 leading-relaxed shadow-inner">
+                <span className="text-emerald-800 font-bold block mb-1">💡 COMO ESTÁ FUNCIONANDO O DISPARO DE IMAGENS & VÍDEO?</span>
                 Ao clicar no botão de testes, o Robust Vision simula a captura em tempo real do frame correspondente do DVR (iSIC Lite/Cloud), executa o filtro inteligente por IA do Robust Vision, registra o evento no banco central (Logs) e realiza o disparo via webhook n8n ativo e alerta formatado para o WhatsApp cadastrado do cliente selecionado.
               </div>
             </div>
 
             {/* Right Trace Output Column */}
             <div className="lg:col-span-7 flex flex-col">
-              <div className="bg-[#03070E] rounded-xl border border-gray-800/80 p-4 flex-1 flex flex-col justify-between font-mono text-xs overflow-hidden min-h-[220px]">
-                <div className="flex items-center justify-between border-b border-gray-800 pb-2 mb-3">
-                  <span className="text-[10px] text-gray-500 font-bold tracking-wider">RAIO-X DOS DISPAROS & TELEMETRIA EM TEMPO REAL</span>
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-4.5 flex-1 flex flex-col justify-between font-mono text-xs overflow-hidden min-h-[220px] shadow-inner">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2 mb-3">
+                  <span className="text-[10px] text-slate-500 font-bold tracking-wider">RAIO-X DOS DISPAROS & TELEMETRIA EM TEMPO REAL</span>
                   {testLogLines.length > 0 && (
                     <button 
                       type="button" 
                       onClick={() => setTestLogLines([])}
-                      className="text-[9px] text-red-400 underline hover:text-red-300 uppercase cursor-pointer"
+                      className="text-[9px] text-red-600 underline hover:text-red-500 uppercase cursor-pointer font-bold"
                     >
                       Limpar Monitor de Testes
                     </button>
                   )}
                 </div>
 
-                <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[170px] pr-2 text-emerald-400 text-[10px] leading-relaxed">
+                <div className="flex-1 space-y-1.5 overflow-y-auto max-h-[170px] pr-2 text-slate-700 text-[10px] leading-relaxed">
                   {testLogLines.length === 0 ? (
-                    <div className="h-full flex flex-col items-center justify-center text-center text-gray-600 space-y-1 font-sans py-8">
-                      <Tv className="w-8 h-8 text-gray-800 animate-pulse" />
-                      <p className="text-gray-500 font-bold font-mono text-[10px] uppercase">Aguardando Execução do Gatilho</p>
-                      <p className="text-gray-600 font-mono text-[9px] max-w-xs leading-relaxed">Selecione o cliente acima e clique em disparar para monitorar e ver os fluxos de imagens e status passo-a-passo.</p>
+                    <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 space-y-1 font-sans py-8">
+                      <Tv className="w-8 h-8 text-slate-300 animate-pulse" />
+                      <p className="text-slate-500 font-bold uppercase text-[10px]">Aguardando Execução do Gatilho</p>
+                      <p className="text-slate-400 text-[9px] max-w-xs leading-relaxed">Selecione o cliente acima e clique em disparar para monitorar e ver os fluxos de imagens e status passo-a-passo.</p>
                     </div>
                   ) : (
                     testLogLines.map((line, idx) => (
-                      <div key={idx} className="whitespace-pre-wrap py-0.5 border-b border-gray-950">
+                      <div key={idx} className="whitespace-pre-wrap py-0.5 border-b border-slate-100">
                         {line}
                       </div>
                     ))
                   )}
                 </div>
 
-                <div className="border-t border-gray-900/60 pt-2 mt-2 flex items-center justify-between text-[8px] text-gray-500">
+                <div className="border-t border-slate-200 pt-2 mt-2 flex items-center justify-between text-[8px] text-slate-405 font-sans uppercase">
                   <span>CANAL ROBUST ZAP: ON-DEMAND TESTER</span>
                   <span>ÚLTIMA LEITURA: {new Date().toLocaleTimeString("pt-BR")}</span>
                 </div>
