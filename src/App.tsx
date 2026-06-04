@@ -162,6 +162,9 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [lastAnalysisResult, setLastAnalysisResult] = useState<{status: string; reason: string; isDemoMode?: boolean} | null>(null);
   
+  // Custom uploaded images mapped to camera feed ID
+  const [customUploadedImages, setCustomUploadedImages] = useState<Record<string, string>>({});
+  
   // Custom mock hour state to simulate different times of the day (important for testing Scheduled WhatsApp deliveries)
   const [systemMockTime, setSystemMockTime] = useState<string>("23:45"); // In simulated Night Guard window
 
@@ -220,6 +223,7 @@ export default function App() {
     to: string;
     message: string;
     timestamp: string;
+    imageUrl?: string;
   }>>([]);
 
   // Interactive client-focused recognition event testing states
@@ -620,7 +624,17 @@ export default function App() {
     ? selectedViewingClient.cameras
     : feeds;
 
-  const selectedFeed = activeViewingCameras.find((f) => f.id === selectedFeedId) || activeViewingCameras[0] || feeds[0];
+  const fallbackFeed: CameraFeed = {
+    id: "fallback-cam",
+    name: "Câmera Padrão",
+    location: "Canal de Monitoramento",
+    imageUrl: "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=500&auto=format&fit=crop&q=60",
+    status: "ACTIVE",
+    fps: 15,
+    noiseLevel: 5
+  };
+
+  const selectedFeed = activeViewingCameras.find((f) => f.id === selectedFeedId) || activeViewingCameras[0] || feeds[0] || fallbackFeed;
   const activeClientOfFeed = registeredClients.find(c => c.cameras?.some(cam => cam.id === selectedFeed.id)) || selectedViewingClient;
 
   // Sync selectedFeedId when the client selection changes to prevent looking at incorrect channels
@@ -787,7 +801,7 @@ export default function App() {
 
   // Run AI analysis on the selected camera feed image
   const handleAnalyzeFeed = async (imageSrcToUse?: string, customMetaName?: string) => {
-    const sourceImage = imageSrcToUse || selectedFeed.imageUrl;
+    const sourceImage = imageSrcToUse || customUploadedImages[selectedFeed.id] || selectedFeed.imageUrl;
     const camName = customMetaName || selectedFeed.name;
     
     if (!sourceImage) {
@@ -1215,6 +1229,11 @@ export default function App() {
     reader.onload = (event) => {
       if (event.target?.result) {
         const imageBase64 = event.target.result as string;
+        // Keep a copy in current camera state so they visually see the photo uploaded
+        setCustomUploadedImages(prev => ({
+          ...prev,
+          [selectedFeed.id]: imageBase64
+        }));
         // Run verification
         handleAnalyzeFeed(imageBase64, "Upload Manual - Sandbox");
       }
@@ -1262,7 +1281,7 @@ export default function App() {
     };
 
     let postUrl = clientWebhookUrl.trim();
-    if (!postUrl.startsWith("http://") && !postUrl.startsWith("https://")) {
+    if (postUrl && !postUrl.startsWith("http://") && !postUrl.startsWith("https://")) {
       postUrl = "https://" + postUrl;
     }
 
@@ -2327,11 +2346,12 @@ export default function App() {
                 <span>DESVIO: ±{selectedFeed.noiseLevel}%</span>
               </div>
 
-              {selectedFeed.imageUrl ? (
+              {(customUploadedImages[selectedFeed.id] || selectedFeed.imageUrl) ? (
                 <img 
-                  src={selectedFeed.imageUrl} 
+                  src={customUploadedImages[selectedFeed.id] || selectedFeed.imageUrl} 
                   alt={selectedFeed.name}
                   className="w-full h-full object-cover opacity-85 transition-transform duration-500 group-hover:scale-[1.02]"
+                  referrerPolicy="no-referrer"
                 />
               ) : (
                 <div className="text-center p-6 text-gray-500 font-mono">
