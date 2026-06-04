@@ -44,6 +44,7 @@ import {
 import { CameraFeed, VerificationLog, WhatsAppSchedule, DVRAccessDevice, SystemStats, SubscriptionPlan, SupabaseN8nConfig, NDSClient, IntelbrasDVR } from "./types";
 import { INITIAL_FEEDS, INITIAL_LOGS, INITIAL_SCHEDULES, INITIAL_DVR_DEVICES, SUBSCRIPTION_PLANS, robustVisionLogo } from "./data";
 import { convertUrlToBase64, generateMockCCTVPlaceholder, formatTime, formatDate } from "./utils";
+import { useFirebase } from "./FirebaseProvider";
 
 // Safe storage helper with memory/safe fallback to prevent Sandbox Iframe SecurityError crashes
 const safeStorage = {
@@ -101,7 +102,7 @@ export default function App() {
     });
   };
 
-  const [feeds, setFeeds] = useState<CameraFeed[]>(() => {
+  const [localFeeds, setLocalFeeds] = useState<CameraFeed[]>(() => {
     try {
       const saved = safeStorage.getItem("rv_feeds");
       if (saved) return JSON.parse(saved);
@@ -111,7 +112,7 @@ export default function App() {
     return INITIAL_FEEDS;
   });
 
-  const [logs, setLogs] = useState<VerificationLog[]>(() => {
+  const [localLogs, setLocalLogs] = useState<VerificationLog[]>(() => {
     try {
       const saved = safeStorage.getItem("rv_logs");
       if (saved) return JSON.parse(saved);
@@ -121,7 +122,7 @@ export default function App() {
     return INITIAL_LOGS;
   });
 
-  const [schedules, setSchedules] = useState<WhatsAppSchedule[]>(() => {
+  const [localSchedules, setLocalSchedules] = useState<WhatsAppSchedule[]>(() => {
     try {
       const saved = safeStorage.getItem("rv_schedules");
       if (saved) return JSON.parse(saved);
@@ -131,7 +132,7 @@ export default function App() {
     return INITIAL_SCHEDULES;
   });
 
-  const [dvrDevices, setDvrDevices] = useState<DVRAccessDevice[]>(() => {
+  const [localDvrDevices, setLocalDvrDevices] = useState<DVRAccessDevice[]>(() => {
     try {
       const saved = safeStorage.getItem("rv_dvr_devices");
       if (saved) return JSON.parse(saved);
@@ -251,7 +252,7 @@ export default function App() {
   const [intelbrasDvrChannels, setIntelbrasDvrChannels] = useState(8);
   const [intelbrasDvrStream, setIntelbrasDvrStream] = useState<"Principal" | "Extra">("Extra");
 
-  const [intelbrasDvrs, setIntelbrasDvrs] = useState<IntelbrasDVR[]>(() => {
+  const [localIntelbrasDvrs, setLocalIntelbrasDvrs] = useState<IntelbrasDVR[]>(() => {
     try {
       const saved = safeStorage.getItem("rv_cloud_dvrs");
       if (saved) return JSON.parse(saved);
@@ -331,7 +332,7 @@ export default function App() {
   const [bulkImportFormat, setBulkImportFormat] = useState<"csv" | "json">("csv");
   const [plansActiveSubTab, setPlansActiveSubTab] = useState<"pricing" | "predefined_unlock">("pricing");
 
-  const [registeredClients, setRegisteredClients] = useState<NDSClient[]>(() => {
+  const [localRegisteredClients, setLocalRegisteredClients] = useState<NDSClient[]>(() => {
     try {
       const saved = safeStorage.getItem("rv_registered_clients");
       if (saved) {
@@ -448,6 +449,168 @@ export default function App() {
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // === FIREBASE STORAGE & SYNCHRONIZATION SERVICE ===
+  const {
+    user: fbUser,
+    loading: fbLoading,
+    isFirebaseActive,
+    feeds: fbFeeds,
+    logs: fbLogs,
+    schedules: fbSchedules,
+    dvrDevices: fbDvrDevices,
+    registeredClients: fbRegisteredClients,
+    intelbrasDvrs: fbIntelbrasDvrs,
+    login: fbLogin,
+    logout: fbLogout,
+    saveFeed,
+    deleteFeed,
+    saveLog,
+    deleteLog,
+    saveSchedule,
+    deleteSchedule,
+    saveDvrDevice,
+    deleteDvrDevice,
+    saveRegisteredClient,
+    deleteRegisteredClient,
+    saveIntelbrasDvr,
+    deleteIntelbrasDvr
+  } = useFirebase();
+
+  // Route state data selectively based on active Firebase connection
+  const feeds = isFirebaseActive ? fbFeeds : localFeeds;
+  const logs = isFirebaseActive ? fbLogs : localLogs;
+  const schedules = isFirebaseActive ? fbSchedules : localSchedules;
+  const dvrDevices = isFirebaseActive ? fbDvrDevices : localDvrDevices;
+  const registeredClients = isFirebaseActive ? fbRegisteredClients : localRegisteredClients;
+  const intelbrasDvrs = isFirebaseActive ? fbIntelbrasDvrs : localIntelbrasDvrs;
+
+  // Sync mutations back to Firestore collections
+  const setFeeds = (valOrFn: CameraFeed[] | ((prev: CameraFeed[]) => CameraFeed[])) => {
+    const resolved = typeof valOrFn === 'function' ? valOrFn(feeds) : valOrFn;
+    if (isFirebaseActive) {
+      const oldMap = new Map(fbFeeds.map(f => [f.id, f]));
+      const newMap = new Map(resolved.map(f => [f.id, f]));
+      resolved.forEach(f => {
+        const old = oldMap.get(f.id);
+        if (!old || JSON.stringify(old) !== JSON.stringify(f)) {
+          saveFeed(f);
+        }
+      });
+      fbFeeds.forEach(f => {
+        if (!newMap.has(f.id)) {
+          deleteFeed(f.id);
+        }
+      });
+    } else {
+      setLocalFeeds(resolved);
+    }
+  };
+
+  const setLogs = (valOrFn: VerificationLog[] | ((prev: VerificationLog[]) => VerificationLog[])) => {
+    const resolved = typeof valOrFn === 'function' ? valOrFn(logs) : valOrFn;
+    if (isFirebaseActive) {
+      const oldMap = new Map(fbLogs.map(l => [l.id, l]));
+      const newMap = new Map(resolved.map(l => [l.id, l]));
+      resolved.forEach(l => {
+        const old = oldMap.get(l.id);
+        if (!old || JSON.stringify(old) !== JSON.stringify(l)) {
+          saveLog(l);
+        }
+      });
+      fbLogs.forEach(l => {
+        if (!newMap.has(l.id)) {
+          deleteLog(l.id);
+        }
+      });
+    } else {
+      setLocalLogs(resolved);
+    }
+  };
+
+  const setSchedules = (valOrFn: WhatsAppSchedule[] | ((prev: WhatsAppSchedule[]) => WhatsAppSchedule[])) => {
+    const resolved = typeof valOrFn === 'function' ? valOrFn(schedules) : valOrFn;
+    if (isFirebaseActive) {
+      const oldMap = new Map(fbSchedules.map(s => [s.id, s]));
+      const newMap = new Map(resolved.map(s => [s.id, s]));
+      resolved.forEach(s => {
+        const old = oldMap.get(s.id);
+        if (!old || JSON.stringify(old) !== JSON.stringify(s)) {
+          saveSchedule(s);
+        }
+      });
+      fbSchedules.forEach(s => {
+        if (!newMap.has(s.id)) {
+          deleteSchedule(s.id);
+        }
+      });
+    } else {
+      setLocalSchedules(resolved);
+    }
+  };
+
+  const setDvrDevices = (valOrFn: DVRAccessDevice[] | ((prev: DVRAccessDevice[]) => DVRAccessDevice[])) => {
+    const resolved = typeof valOrFn === 'function' ? valOrFn(dvrDevices) : valOrFn;
+    if (isFirebaseActive) {
+      const oldMap = new Map(fbDvrDevices.map(d => [d.id, d]));
+      const newMap = new Map(resolved.map(d => [d.id, d]));
+      resolved.forEach(d => {
+        const old = oldMap.get(d.id);
+        if (!old || JSON.stringify(old) !== JSON.stringify(d)) {
+          saveDvrDevice(d);
+        }
+      });
+      fbDvrDevices.forEach(d => {
+        if (!newMap.has(d.id)) {
+          deleteDvrDevice(d.id);
+        }
+      });
+    } else {
+      setLocalDvrDevices(resolved);
+    }
+  };
+
+  const setRegisteredClients = (valOrFn: NDSClient[] | ((prev: NDSClient[]) => NDSClient[])) => {
+    const resolved = typeof valOrFn === 'function' ? valOrFn(registeredClients) : valOrFn;
+    if (isFirebaseActive) {
+      const oldMap = new Map(fbRegisteredClients.map(c => [c.id, c]));
+      const newMap = new Map(resolved.map(c => [c.id, c]));
+      resolved.forEach(c => {
+        const old = oldMap.get(c.id);
+        if (!old || JSON.stringify(old) !== JSON.stringify(c)) {
+          saveRegisteredClient(c);
+        }
+      });
+      fbRegisteredClients.forEach(c => {
+        if (!newMap.has(c.id)) {
+          deleteRegisteredClient(c.id);
+        }
+      });
+    } else {
+      setLocalRegisteredClients(resolved);
+    }
+  };
+
+  const setIntelbrasDvrs = (valOrFn: IntelbrasDVR[] | ((prev: IntelbrasDVR[]) => IntelbrasDVR[])) => {
+    const resolved = typeof valOrFn === 'function' ? valOrFn(intelbrasDvrs) : valOrFn;
+    if (isFirebaseActive) {
+      const oldMap = new Map(fbIntelbrasDvrs.map(d => [d.id, d]));
+      const newMap = new Map(resolved.map(d => [d.id, d]));
+      resolved.forEach(d => {
+        const old = oldMap.get(d.id);
+        if (!old || JSON.stringify(old) !== JSON.stringify(d)) {
+          saveIntelbrasDvr(d);
+        }
+      });
+      fbIntelbrasDvrs.forEach(d => {
+        if (!newMap.has(d.id)) {
+          deleteIntelbrasDvr(d.id);
+        }
+      });
+    } else {
+      setLocalIntelbrasDvrs(resolved);
+    }
+  };
   
   // Resolve client and its cameras/live streams for dynamic dashboard viewing
   const selectedViewingClient = registeredClients.find((c) => c.id === currentViewingClientId) || null;
@@ -1872,6 +2035,48 @@ export default function App() {
         {/* Bottom Config Widgets block inside Sidebar */}
         <div className="pt-3 border-t border-[#1E293B] mt-4 space-y-3 shrink-0 bg-[#0E1524]">
           <p className="text-[9px] text-[#10B981] uppercase font-bold tracking-widest block mb-0.5">Central de Simulação</p>
+          
+          {/* FIREBASE REAL-TIME CLOUD SYNC MODULE */}
+          <div className="bg-[#111827] border border-[#1E293B] rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-white font-bold uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                <Database className="w-3.5 h-3.5 text-[#10B981]" /> Cloud Database
+              </span>
+              <span className={`w-2 h-2 rounded-full ${isFirebaseActive ? "bg-[#10B981] animate-pulse" : "bg-amber-500"}`} />
+            </div>
+            {isFirebaseActive ? (
+              <div className="space-y-1.5 font-mono">
+                <p className="text-[9px] text-[#10B981] leading-tight">
+                  ✓ Conectado ao Firebase Firestore
+                </p>
+                <div className="bg-[#090D14] border border-emerald-950/40 p-1.5 rounded text-[9px] leading-normal text-gray-300">
+                  <div className="truncate font-semibold text-white">{fbUser?.displayName || "Administrador NDS"}</div>
+                  <div className="truncate text-[8px] text-gray-500">{fbUser?.email}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={fbLogout}
+                  className="w-full text-center text-[9px] font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 py-1 bg-red-500/5 rounded border border-red-500/20 cursor-pointer transition-all uppercase"
+                >
+                  Desconectar Conta
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <p className="text-[9px] text-gray-400 leading-tight">
+                  Você está rodando em <strong className="text-amber-400 font-mono">modo de demonstração</strong>. Sincronize com a nuvem utilizando sua conta Google:
+                </p>
+                <button
+                  type="button"
+                  onClick={fbLogin}
+                  className="w-full font-bold text-center text-[10px] text-[#090D14] bg-[#10B981] hover:bg-[#0FB27A] hover:scale-[1.02] py-1.5 rounded flex items-center justify-center gap-1.5 cursor-pointer transition-all uppercase shadow-md shadow-[#10B981]/20 active:scale-[0.98] font-mono"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: '3s' }} />
+                  Login Google Cloud
+                </button>
+              </div>
+            )}
+          </div>
           
           {/* Relógio de testes */}
           <div className="bg-[#111827] border border-gray-800/60 rounded-lg p-2 space-y-1">

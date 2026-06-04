@@ -1,0 +1,140 @@
+{
+  "entities": {
+    "CameraFeed": {
+      "title": "CameraFeed",
+      "description": "CCTV Camera feed details and current security status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "location": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "OFFLINE", "ALERT"] },
+        "fps": { "type": "number" },
+        "noiseLevel": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "name", "userId"]
+    },
+    "VerificationLog": {
+      "title": "VerificationLog",
+      "description": "Historic cctv image audit analysis results using Gemini/Robust Vision IA",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "cameraName": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["ALERTA", "OK"] },
+        "reason": { "type": "string" },
+        "operator": { "type": "string" },
+        "sentToWhatsApp": { "type": "boolean" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "cameraName", "status", "reason", "userId"]
+    },
+    "WhatsAppSchedule": {
+      "title": "WhatsAppSchedule",
+      "description": "Automated schedule window for sending CCTV alerts via WhatsApp",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "phoneNumbers": { "type": "array" },
+        "enabled": { "type": "boolean" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "label", "startTime", "endTime", "userId"]
+    },
+    "DVRAccessDevice": {
+      "title": "DVRAccessDevice",
+      "description": "Hardware device accessing CCTV networks, MAC address or IP metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "addressType": { "type": "string", "enum": ["MAC", "IP"] },
+        "addressValue": { "type": "string" },
+        "authorized": { "type": "boolean" },
+        "lastAccessTime": { "type": "string" },
+        "dvrId": { "type": "string" },
+        "dvrUser": { "type": "string" },
+        "dvrPassword": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "deviceName", "addressType", "addressValue", "userId"]
+    },
+    "NDSClient": {
+      "title": "NDSClient",
+      "description": "NDS Registered Commerces/Clients with access credentials and profile details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "tradingName": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "openTime": { "type": "string" },
+        "closeTime": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "planId": { "type": "string" },
+        "planName": { "type": "string" },
+        "paymentStatus": { "type": "string", "enum": ["Pago", "Pendente", "Atrasado"] },
+        "paymentValue": { "type": "string" },
+        "paymentMethod": { "type": "string", "enum": ["Pix", "Boleto", "Cartão", "Dinheiro"] },
+        "dueDate": { "type": "string" },
+        "isicAccessAuthorized": { "type": "boolean" },
+        "isicAuthorizedCameras": { "type": "array" },
+        "isicUserCredentials": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "tradingName", "whatsapp", "userId"]
+    },
+    "IntelbrasDVR": {
+      "title": "IntelbrasDVR",
+      "description": "Connected DVR recorders integrated with iSIC Lite or Intelbras Cloud",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "integrationType": { "type": "string", "enum": ["iSIC Lite", "Intelbras Cloud"] },
+        "addressOrSerial": { "type": "string" },
+        "port": { "type": "number" },
+        "user": { "type": "string" },
+        "password": { "type": "string" },
+        "channelsCount": { "type": "number" },
+        "streamType": { "type": "string", "enum": ["Principal", "Extra"] },
+        "connected": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "name", "integrationType", "addressOrSerial", "userId"]
+    }
+  },
+  "firestore": {
+    "/feeds/{feedId}": {
+      "schema": "CameraFeed",
+      "description": "CCTV live channels"
+    },
+    "/logs/{logId}": {
+      "schema": "VerificationLog",
+      "description": "AI analysis event logs"
+    },
+    "/schedules/{scheduleId}": {
+      "schema": "WhatsAppSchedule",
+      "description": "Emergency WhatsApp schedules"
+    },
+    "/dvr_devices/{deviceId}": {
+      "schema": "DVRAccessDevice",
+      "description": "Hardware device logins"
+    },
+    "/registered_clients/{clientId}": {
+      "schema": "NDSClient",
+      "description": "Registered NDS clients"
+    },
+    "/cloud_dvrs/{dvrId}": {
+      "schema": "IntelbrasDVR",
+      "description": "Intelbras physical recorder integration setups"
+    }
+  }
+}

@@ -1,0 +1,154 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net: Default-Deny Catch-All
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definitions & Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Entity validation functions (Schema Guarding)
+    function isValidCameraFeed(data) {
+      return data.id is string && data.id.size() <= 64 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+             data.location is string && data.location.size() <= 100 &&
+             data.imageUrl is string && data.imageUrl.size() <= 2048 &&
+             data.status is string && (data.status == "ACTIVE" || data.status == "OFFLINE" || data.status == "ALERT") &&
+             data.fps is number && data.fps >= 0 && data.fps <= 60 &&
+             data.noiseLevel is number && data.noiseLevel >= 0 && data.noiseLevel <= 100 &&
+             data.userId is string && data.userId == request.auth.uid;
+    }
+
+    function isValidVerificationLog(data) {
+      return data.id is string && data.id.size() <= 64 &&
+             data.cameraName is string && data.cameraName.size() <= 100 &&
+             data.timestamp is string && data.timestamp.size() <= 100 &&
+             data.imageUrl is string && data.imageUrl.size() <= 2048 &&
+             data.status is string && (data.status == "ALERTA" || data.status == "OK") &&
+             data.reason is string && data.reason.size() <= 2000 &&
+             data.operator is string && data.operator.size() <= 100 &&
+             data.sentToWhatsApp is bool &&
+             data.userId is string && data.userId == request.auth.uid;
+    }
+
+    function isValidWhatsAppSchedule(data) {
+      return data.id is string && data.id.size() <= 64 &&
+             data.label is string && data.label.size() <= 100 &&
+             data.startTime is string && data.startTime.size() <= 8 &&
+             data.endTime is string && data.endTime.size() <= 8 &&
+             data.phoneNumbers is list && data.phoneNumbers.size() <= 10 &&
+             data.enabled is bool &&
+             data.userId is string && data.userId == request.auth.uid;
+    }
+
+    function isValidDVRAccessDevice(data) {
+      return data.id is string && data.id.size() <= 64 &&
+             data.deviceName is string && data.deviceName.size() <= 100 &&
+             data.addressType is string && (data.addressType == "MAC" || data.addressType == "IP") &&
+             data.addressValue is string && data.addressValue.size() <= 50 &&
+             data.authorized is bool &&
+             (data.lastAccessTime is string || !('lastAccessTime' in data)) &&
+             data.userId is string && data.userId == request.auth.uid;
+    }
+
+    function isValidNDSClient(data) {
+      return data.id is string && data.id.size() <= 64 &&
+             data.tradingName is string && data.tradingName.size() >= 2 && data.tradingName.size() <= 100 &&
+             data.whatsapp is string && data.whatsapp.size() <= 30 &&
+             (data.openTime is string || !('openTime' in data)) &&
+             (data.closeTime is string || !('closeTime' in data)) &&
+             (data.createdAt is string || !('createdAt' in data)) &&
+             data.userId is string && data.userId == request.auth.uid;
+    }
+
+    function isValidIntelbrasDVR(data) {
+      return data.id is string && data.id.size() <= 64 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+             data.integrationType is string && (data.integrationType == "iSIC Lite" || data.integrationType == "Intelbras Cloud") &&
+             data.addressOrSerial is string && data.addressOrSerial.size() <= 128 &&
+             (data.port is number || !('port' in data)) &&
+             data.user is string && data.user.size() <= 50 &&
+             (data.password is string || !('password' in data)) &&
+             data.channelsCount is number && data.channelsCount >= 0 && data.channelsCount <= 64 &&
+             data.streamType is string && (data.streamType == "Principal" || data.streamType == "Extra") &&
+             data.connected is bool &&
+             (data.createdAt is string || !('createdAt' in data)) &&
+             data.userId is string && data.userId == request.auth.uid;
+    }
+
+    // Collection: Camera Feeds
+    match /feeds/{feedId} {
+      allow get: if isEmailVerified() && existing().userId == request.auth.uid && isValidId(feedId);
+      allow list: if isEmailVerified() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidId(feedId) && isValidCameraFeed(incoming());
+      allow update: if isEmailVerified() && isValidId(feedId) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid && isValidCameraFeed(incoming());
+      allow delete: if isEmailVerified() && isValidId(feedId) && existing().userId == request.auth.uid;
+    }
+
+    // Collection: AI Event Verification Logs
+    match /logs/{logId} {
+      allow get: if isEmailVerified() && existing().userId == request.auth.uid && isValidId(logId);
+      allow list: if isEmailVerified() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidId(logId) && isValidVerificationLog(incoming());
+      allow update: if isEmailVerified() && isValidId(logId) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid && isValidVerificationLog(incoming());
+      allow delete: if isEmailVerified() && isValidId(logId) && existing().userId == request.auth.uid;
+    }
+
+    // Collection: Emergency WhatsApp Schedules
+    match /schedules/{scheduleId} {
+      allow get: if isEmailVerified() && existing().userId == request.auth.uid && isValidId(scheduleId);
+      allow list: if isEmailVerified() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidId(scheduleId) && isValidWhatsAppSchedule(incoming());
+      allow update: if isEmailVerified() && isValidId(scheduleId) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid && isValidWhatsAppSchedule(incoming());
+      allow delete: if isEmailVerified() && isValidId(scheduleId) && existing().userId == request.auth.uid;
+    }
+
+    // Collection: DVR Physical Access Devices
+    match /dvr_devices/{deviceId} {
+      allow get: if isEmailVerified() && existing().userId == request.auth.uid && isValidId(deviceId);
+      allow list: if isEmailVerified() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidId(deviceId) && isValidDVRAccessDevice(incoming());
+      allow update: if isEmailVerified() && isValidId(deviceId) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid && isValidDVRAccessDevice(incoming());
+      allow delete: if isEmailVerified() && isValidId(deviceId) && existing().userId == request.auth.uid;
+    }
+
+    // Collection: Registered NDS Clients
+    match /registered_clients/{clientId} {
+      allow get: if isEmailVerified() && existing().userId == request.auth.uid && isValidId(clientId);
+      allow list: if isEmailVerified() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidId(clientId) && isValidNDSClient(incoming());
+      allow update: if isEmailVerified() && isValidId(clientId) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid && isValidNDSClient(incoming());
+      allow delete: if isEmailVerified() && isValidId(clientId) && existing().userId == request.auth.uid;
+    }
+
+    // Collection: Connected Intelbras DVR Units
+    match /cloud_dvrs/{dvrId} {
+      allow get: if isEmailVerified() && existing().userId == request.auth.uid && isValidId(dvrId);
+      allow list: if isEmailVerified() && resource.data.userId == request.auth.uid;
+      allow create: if isEmailVerified() && isValidId(dvrId) && isValidIntelbrasDVR(incoming());
+      allow update: if isEmailVerified() && isValidId(dvrId) && existing().userId == request.auth.uid && incoming().userId == request.auth.uid && isValidIntelbrasDVR(incoming());
+      allow delete: if isEmailVerified() && isValidId(dvrId) && existing().userId == request.auth.uid;
+    }
+  }
+}
