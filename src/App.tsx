@@ -158,7 +158,7 @@ export default function App() {
   const [selectedFeedId, setSelectedFeedId] = useState<string>("cam-02");
   const [isicLiteConnected, setIsicLiteConnected] = useState<boolean>(true);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
-  const [lastAnalysisResult, setLastAnalysisResult] = useState<{status: string; reason: string} | null>(null);
+  const [lastAnalysisResult, setLastAnalysisResult] = useState<{status: string; reason: string; isDemoMode?: boolean} | null>(null);
   
   // Custom mock hour state to simulate different times of the day (important for testing Scheduled WhatsApp deliveries)
   const [systemMockTime, setSystemMockTime] = useState<string>("23:45"); // In simulated Night Guard window
@@ -230,7 +230,7 @@ export default function App() {
   // --- NEW STATES FOR ADMIN TAB CLIENTS FORM & DVR CLOUD ---
   const [activeTab, setActiveTab] = useState<"video" | "admin_clients" | "dvr_integrations" | "export_store">("video");
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
-  const [dvrGuideTab, setDvrGuideTab] = useState<"dvr_config" | "n8n_flow" | "whatsapp_api" | "cloud_provision">("dvr_config");
+  const [dvrGuideTab, setDvrGuideTab] = useState<"dvr_config" | "n8n_flow" | "whatsapp_api" | "cloud_provision" | "real_agent">("dvr_config");
   const [provisionDvrId, setProvisionDvrId] = useState("");
   const [provisioningLogs, setProvisioningLogs] = useState<string[]>([]);
   const [isCloudProvisioning, setIsCloudProvisioning] = useState(false);
@@ -307,6 +307,11 @@ export default function App() {
   // Inputs for adding a camera within the Inspected Client full file (Ficha) modal
   const [newInspectedCamName, setNewInspectedCamName] = useState("");
   const [newInspectedCamLocation, setNewInspectedCamLocation] = useState("Entrada Principal");
+
+  // Camera editing states for Client registration draft and Client inspection Ficha
+  const [editingCamId, setEditingCamId] = useState<string | null>(null);
+  const [editingCamName, setEditingCamName] = useState("");
+  const [editingCamUrl, setEditingCamUrl] = useState("");
 
   const [adminSubTab, setAdminSubTab] = useState<"cadastro" | "financeiro" | "escala_500" | "isic_acessos">("cadastro");
   const [currentViewingClientId, setCurrentViewingClientId] = useState<string>("all_feeds");
@@ -750,7 +755,8 @@ export default function App() {
       setLogs(prev => [newLog, ...prev]);
       setLastAnalysisResult({
         status: data.status,
-        reason: data.reason
+        reason: data.reason,
+        isDemoMode: data.isDemoMode
       });
 
       // Update feed status temporarily
@@ -763,7 +769,8 @@ export default function App() {
       console.error(err);
       setLastAnalysisResult({
         status: "ERRO",
-        reason: "Ocorreu um erro ao processar a imagem com a API do Robust Vision. Verifique a chave de API."
+        reason: "Ocorreu um erro ao processar a imagem com a API do Robust Vision. Verifique a chave de API.",
+        isDemoMode: true
       });
     } finally {
       setIsAnalyzing(false);
@@ -1077,7 +1084,16 @@ export default function App() {
       paymentValue: payload.paymentValue,
       paymentMethod: payload.paymentMethod as "Pix" | "Boleto" | "Cartão" | "Dinheiro",
       dueDate: payload.dueDate,
-      cameras: [...clientRegCameras],
+      cameras: clientRegCameras.map(cam => {
+        // Automatically make camera name unique by incorporating client name if not already present
+        if (!cam.name.toLowerCase().includes(payload.tradingName.toLowerCase())) {
+          return {
+            ...cam,
+            name: `${cam.name} (${payload.tradingName})`
+          };
+        }
+        return cam;
+      }),
       supabaseUrl: postUrl
     };
 
@@ -2135,10 +2151,22 @@ export default function App() {
                     )}
                   </div>
                   <div className="flex-1 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider">
-                        LAUDO ROBUST VISION: {lastAnalysisResult.status}
-                      </span>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold uppercase tracking-wider">
+                          LAUDO ROBUST VISION: {lastAnalysisResult.status}
+                        </span>
+                        {lastAnalysisResult.isDemoMode === false ? (
+                          <span className="text-[8.5px] font-mono font-bold bg-emerald-500/12 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/25 flex items-center gap-1 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                            🤖 IA REAL GEMINI
+                          </span>
+                        ) : (
+                          <span className="text-[8.5px] font-mono font-bold bg-[#EABB34]/12 text-[#EABB34] px-1.5 py-0.5 rounded border border-[#EABB34]/20 flex items-center gap-1">
+                            ⚠️ MODO DEMONSTRAÇÃO (SEM CHAVE)
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[10px] text-gray-400">Verificado em: {systemMockTime}</span>
                     </div>
                     <p className="text-xs leading-relaxed">{lastAnalysisResult.reason}</p>
@@ -3972,23 +4000,89 @@ export default function App() {
                           <p className="text-[10px] text-gray-500 italic block">Selecione/adicione canais acima ou o DVR será cadastrado sem câmeras inicialmente.</p>
                         ) : (
                           <div className="max-h-[140px] overflow-y-auto space-y-1 pr-1 bg-[#090D14]/50 border border-gray-850 p-2 rounded-lg">
-                            {clientRegCameras.map((cam, idx) => (
-                              <div key={cam.id} className="flex items-center justify-between bg-[#111827] border border-gray-800 p-1.5 px-2.5 rounded-md text-[10px]">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="text-cyan-400 font-bold font-mono">CH{idx + 1}</span>
-                                  <span className="text-white font-semibold truncate">{cam.name}</span>
-                                  <span className="text-gray-500 text-[9px] font-mono">({cam.location})</span>
+                            {clientRegCameras.map((cam, idx) => {
+                              const isEditing = editingCamId === cam.id;
+                              return (
+                                <div key={cam.id} className="bg-[#111827] border border-gray-800 p-2 rounded-md text-[10px] space-y-2">
+                                  {isEditing ? (
+                                    <div className="space-y-1.5 p-1 bg-gray-900 rounded">
+                                      <div>
+                                        <label className="text-[8px] text-cyan-400 uppercase font-bold block mb-0.5">Nome do Canal</label>
+                                        <input
+                                          type="text"
+                                          value={editingCamName}
+                                          onChange={(e) => setEditingCamName(e.target.value)}
+                                          className="w-full bg-[#090D14] text-white text-[10px] border border-gray-750 px-2 py-1 rounded"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label className="text-[8px] text-cyan-400 uppercase font-bold block mb-0.5">URL da Imagem Real (HTTPS/Base64)</label>
+                                        <input
+                                          type="text"
+                                          value={editingCamUrl}
+                                          onChange={(e) => setEditingCamUrl(e.target.value)}
+                                          placeholder="https://sua-url-de-camera-real.jpg"
+                                          className="w-full bg-[#090D14] text-white text-[10px] border border-gray-750 px-2 py-1 rounded font-mono"
+                                        />
+                                      </div>
+                                      <div className="flex gap-1.5 justify-end pt-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (!editingCamName.trim()) {
+                                              showAppAlert("O nome da câmera não pode ser vazio.", "Nome Invalido", "warn");
+                                              return;
+                                            }
+                                            setClientRegCameras(prev => prev.map(c => c.id === cam.id ? { ...c, name: editingCamName.trim(), imageUrl: editingCamUrl.trim() } : c));
+                                            setEditingCamId(null);
+                                          }}
+                                          className="px-2 py-0.5 bg-[#10B981] text-[#090D14] rounded font-bold hover:opacity-90 cursor-pointer"
+                                        >
+                                          ✓ Salvar
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingCamId(null)}
+                                          className="px-2 py-0.5 bg-gray-700 text-white rounded font-bold hover:opacity-90 cursor-pointer"
+                                        >
+                                          Cancelar
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-cyan-400 font-bold font-mono">CH{idx + 1}</span>
+                                        <span className="text-white font-semibold truncate" title={cam.name}>{cam.name}</span>
+                                        <span className="text-gray-500 text-[9px] font-mono">({cam.location})</span>
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingCamId(cam.id);
+                                            setEditingCamName(cam.name);
+                                            setEditingCamUrl(cam.imageUrl);
+                                          }}
+                                          className="text-cyan-400 hover:text-cyan-300 px-1 py-0.5 hover:bg-cyan-500/10 rounded transition-colors cursor-pointer font-bold text-[9px]"
+                                          title="Editar câmera"
+                                        >
+                                          ✏️ EDITAR
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setClientRegCameras(prev => prev.filter(c => c.id !== cam.id))}
+                                          className="text-red-400 hover:text-red-300 p-1 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
+                                          title="Remover câmera"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setClientRegCameras(prev => prev.filter(c => c.id !== cam.id))}
-                                  className="text-red-400 hover:text-red-300 p-1 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
-                                  title="Remover câmera"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -4386,38 +4480,112 @@ export default function App() {
                             </button>
                           </div>
                         ) : (
-                          (inspectedClient.cameras || []).map((cam, idx) => (
-                            <div key={cam.id} className="p-3 bg-[#090D14] border border-gray-800 rounded-lg flex flex-col justify-between">
-                              <div>
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-white font-bold text-[11px] truncate">{cam.name}</span>
-                                  <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.2 rounded border border-cyan-500/15">
-                                    CH {idx + 1}
-                                  </span>
-                                </div>
-                                <p className="text-[10px] text-gray-500 font-mono">Local: {cam.location}</p>
-                                <div className="mt-2 h-16 w-full rounded overflow-hidden relative border border-gray-850">
-                                  <img src={cam.imageUrl} alt={cam.name} className="w-full h-full object-cover opacity-60" referrerPolicy="no-referrer" />
-                                  <span className="absolute bottom-1 right-1 px-1 bg-black/60 text-emerald-400 font-mono text-[8px] font-bold uppercase rounded">
-                                    ONLINE • {cam.fps} FPS
-                                  </span>
-                                </div>
+                          (inspectedClient.cameras || []).map((cam, idx) => {
+                            const isEditingCurrent = editingCamId === cam.id;
+                            return (
+                              <div key={cam.id} className="p-3 bg-[#090D14] border border-gray-800 rounded-lg flex flex-col justify-between min-h-[175px]">
+                                {isEditingCurrent ? (
+                                  <div className="space-y-1.5 text-[10px]">
+                                    <div>
+                                      <label className="text-[8px] text-cyan-400 uppercase font-bold block mb-0.5">Nome da Câmera</label>
+                                      <input
+                                        type="text"
+                                        value={editingCamName}
+                                        onChange={(e) => setEditingCamName(e.target.value)}
+                                        className="w-full bg-[#111827] text-white text-[11px] border border-gray-750 px-2 py-1 rounded focus:outline-none focus:ring-1 focus:ring-cyan-500"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[8px] text-cyan-400 uppercase font-bold block mb-0.5">URL / Base64 da Foto Real</label>
+                                      <input
+                                        type="text"
+                                        value={editingCamUrl}
+                                        onChange={(e) => setEditingCamUrl(e.target.value)}
+                                        className="w-full bg-[#111827] text-white text-[10px] border border-gray-750 px-2 py-1 rounded font-mono"
+                                        placeholder="URL da imagem real..."
+                                      />
+                                    </div>
+                                    <div className="flex gap-1.5 justify-end pt-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (!editingCamName.trim()) {
+                                            showAppAlert("O nome não pode ser vazio.", "Nome Inválido", "warn");
+                                            return;
+                                          }
+                                          const updatedCams = (inspectedClient.cameras || []).map(c => 
+                                            c.id === cam.id ? { ...c, name: editingCamName.trim(), imageUrl: editingCamUrl.trim() } : c
+                                          );
+                                          const updated = { ...inspectedClient, cameras: updatedCams };
+                                          setRegisteredClients(prev => prev.map(c => c.id === inspectedClient.id ? updated : c));
+                                          setInspectedClient(updated);
+                                          setEditingCamId(null);
+                                          showAppAlert("Canal atualizado com sucesso!", "Alteração Salva", "success");
+                                        }}
+                                        className="px-2 py-0.5 bg-[#10B981] text-[#090D14] rounded font-bold hover:opacity-90 cursor-pointer"
+                                      >
+                                        ✓ Salvar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingCamId(null)}
+                                        className="px-2 py-0.5 bg-gray-700 text-white rounded font-bold hover:opacity-90 cursor-pointer"
+                                      >
+                                        Cancelar
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div>
+                                      <div className="flex items-center justify-between mb-1">
+                                        <span className="text-white font-bold text-[11px] truncate block max-w-[120px]" title={cam.name}>{cam.name}</span>
+                                        <span className="text-[9px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.2 rounded border border-cyan-500/15">
+                                          CH {idx + 1}
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] text-gray-500 font-mono">Local: {cam.location}</p>
+                                      <div className="mt-2 h-16 w-full rounded overflow-hidden relative border border-gray-850 bg-black">
+                                        {cam.imageUrl ? (
+                                          <img src={cam.imageUrl} alt={cam.name} className="w-full h-full object-cover opacity-60" referrerPolicy="no-referrer" />
+                                        ) : (
+                                          <div className="w-full h-full flex items-center justify-center text-[8px] text-gray-600 font-mono">SINAL NULO</div>
+                                        )}
+                                        <span className="absolute bottom-1 right-1 px-1 bg-black/60 text-emerald-400 font-mono text-[8px] font-bold uppercase rounded">
+                                          ONLINE • {cam.fps} FPS
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-1.5 mt-3">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingCamId(cam.id);
+                                          setEditingCamName(cam.name);
+                                          setEditingCamUrl(cam.imageUrl || "");
+                                        }}
+                                        className="flex-1 py-1 bg-cyan-950/40 hover:bg-cyan-950/80 text-cyan-400 text-[10px] uppercase font-bold rounded border border-cyan-500/15 cursor-pointer text-center transition-colors"
+                                      >
+                                        ✏️ Editar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const updatedCams = (inspectedClient.cameras || []).filter(c => c.id !== cam.id);
+                                          const updated = { ...inspectedClient, cameras: updatedCams };
+                                          setRegisteredClients(prev => prev.map(c => c.id === inspectedClient.id ? updated : c));
+                                          setInspectedClient(updated);
+                                        }}
+                                        className="flex-1 py-1 bg-red-950/40 hover:bg-red-950/80 text-red-500 text-[10px] uppercase font-bold rounded border border-red-500/15 cursor-pointer text-center transition-colors"
+                                      >
+                                        Excluir
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  // delete camera (remove)
-                                  const updatedCams = (inspectedClient.cameras || []).filter(c => c.id !== cam.id);
-                                  const updated = { ...inspectedClient, cameras: updatedCams };
-                                  setRegisteredClients(prev => prev.map(c => c.id === inspectedClient.id ? updated : c));
-                                  setInspectedClient(updated);
-                                }}
-                                className="mt-3.5 w-full py-1 bg-red-950/40 hover:bg-red-950/80 text-red-400 text-[10px] uppercase font-bold rounded border border-red-500/15 cursor-pointer text-center transition-colors"
-                              >
-                                Excluir Canal
-                              </button>
-                            </div>
-                          ))
+                            );
+                          })
                         )}
                       </div>
 
@@ -5810,6 +5978,17 @@ export default function App() {
                         >
                           ⚡ 4. AUTO-SETUP CLOUD
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => setDvrGuideTab("real_agent")}
+                          className={`px-2 py-1 text-[9px] font-bold rounded cursor-pointer transition-all ml-1 ${
+                            dvrGuideTab === "real_agent"
+                              ? "bg-emerald-500/12 text-emerald-400 border border-emerald-500/25 shadow"
+                              : "text-gray-400 hover:text-gray-200 border border-transparent"
+                          }`}
+                        >
+                          🐍 5. MICRO-AGENTE REAL
+                        </button>
                       </div>
                     </div>
 
@@ -6047,6 +6226,129 @@ export default function App() {
                               // Habilitar Snapshot de Alarme perimetral no Canal 1:<br/>
                               POST /cgi-bin/configManager.cgi?action=setConfig&Event[0].AnalyzeRule[0].EventHandler.Snapshot=true&RecordSchedule[0].SubStream[0].Section[0].Type=Motion
                             </code>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {dvrGuideTab === "real_agent" && (
+                      <div className="space-y-4 pt-1">
+                        <div className="bg-[#1C2638]/40 border border-emerald-500/20 rounded-xl p-4 space-y-2 text-[11px] leading-relaxed">
+                          <span className="text-emerald-400 font-bold block text-xs flex items-center gap-1.5 font-sans">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                            🟢 Como Conectar Câmeras Físicas e DVRs Reais (iSIC / RTSP):
+                          </span>
+                          <p className="text-gray-300 font-sans">
+                            Como este painel roda em servidores seguros na nuvem (Cloud), o navegador não consegue acessar diretamente os IPs locais (ex: <code className="text-violet-300">192.168.1.108</code>) ou senhas do seu DVR físico, pois eles estão protegidos pelo firewall do seu roteador local.
+                          </p>
+                          <p className="text-gray-300 font-sans">
+                            Para fazer o sistema funcionar 100% de verdade com suas câmeras residenciais ou comerciais, você deve rodar um <strong>pequeno script (Micro-Agente) local</strong> na mesma rede do seu DVR. Esse agente se conecta via RTSP, extrai snapshots reais quando detecta movimento e envia à nossa API para análise de IA do Gemini instantaneamente.
+                          </p>
+                        </div>
+
+                        {/* Python Micro-Agent */}
+                        <div className="bg-[#03070E] p-4.5 rounded-xl border border-gray-800 space-y-3.5">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-850 pb-2.5">
+                            <div>
+                              <h4 className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1 font-mono">
+                                🐍 Opção A: Micro-Agente em Python (Recomendado)
+                              </h4>
+                              <p className="text-[10px] text-gray-500 mt-1 font-sans">Ideal para rodar em qualquer PC do escritório, Raspberry Pi ou Servidor Local.</p>
+                            </div>
+                            <span className="text-[8.5px] font-mono bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded border border-emerald-500/20 font-bold">
+                              PYTHON 3.10+
+                            </span>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">Passo 1: Instale as bibliotecas necessárias:</p>
+                            <code className="text-cyan-400 bg-black/50 block p-2 rounded text-[9px] font-mono">
+                              pip install opencv-python requests pillow
+                            </code>
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-[10px] text-gray-400 font-bold uppercase">Passo 2: Crie o arquivo <code className="text-white bg-slate-800 px-1 rounded font-mono">agent.py</code> com o código de produção abaixo:</p>
+                            <div className="bg-[#0e1626] p-3 rounded-lg border border-gray-850 max-h-[300px] overflow-y-auto font-mono text-[9px] text-gray-300 select-all leading-normal">
+{`import cv2
+import requests
+import time
+import base64
+import os
+
+# CONFIGURAÇÕES DO AGENTE LOCAL
+# Substitua pelo IP/Porta real do seu DVR Intelbras local
+DVR_USER = "${intelbrasDvrUser || "admin"}"
+DVR_PASS = "${intelbrasDvrPassword || "suasenha"}"
+DVR_HOST = "192.168.1.108"
+RTSP_PORT = 554
+CANAL_ID = 1  # Canal da câmera desejada no DVR
+
+# Endereço de RTSP padrão da Intelbras (iSIC Lite)
+RTSP_URL = f"rtsp://{DVR_USER}:{DVR_PASS}@{DVR_HOST}:{RTSP_PORT}/cam/realmonitor?channel={CANAL_ID}&subtype=0"
+
+# Endpoint da API para onde enviar as fotos de forma segura
+API_URL = "${window.location.origin}/api/verify-feed"
+
+def capturar_e_enviar():
+    print(f"[*] Iniciando conexão RTSP: {DVR_HOST} - Canal {CANAL_ID}...")
+    cap = cv2.VideoCapture(RTSP_URL)
+    
+    if not cap.isOpened():
+        print("[!] Erro: Não foi possível conectar ao stream RTSP do DVR. Verifique IP e credenciais.")
+        return False
+
+    # Captura um único frame de alta fidelidade
+    ret, frame = cap.read()
+    cap.release()
+
+    if not ret:
+        print("[!] Erro: Falha ao capturar imagem da câmera.")
+        return False
+
+    # Codifica em PNG/JPEG
+    success, encoded_img = cv2.imencode(".jpg", frame)
+    if not success:
+        print("[!] Erro na codificação da imagem.")
+        return False
+
+    # Converte para base64 padrão Data URL para envio à API do Gemini
+    base64_data = base64.b64encode(encoded_img).decode("utf-8")
+    data_url = f"data:image/jpeg;base64,{base64_data}"
+
+    print("[*] Imagem capturada com sucesso! Enviando para o Robust Vision Cloud AI...")
+    try:
+        response = requests.post(API_URL, json={"image": data_url}, timeout=30)
+        if response.status_code == 200:
+            res_json = response.json()
+            print(f"[+] RESPOSTA DA IA: Status: {res_json.get('status')} | Motivo: {res_json.get('reason')}")
+            return True
+        else:
+            print(f"[!] Erro no Servidor: Status {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"[!] Erro de conexão com servidor Cloud: {e}")
+        return False
+
+if __name__ == "__main__":
+    # Roda em loop como serviço perimetral
+    print("=== MONITOR DE CFTV ROBUST VISION INICIADO ===")
+    while True:
+        try:
+            # Em produção, você pode disparador este script via Webhook de Alarme do próprio DVR (CGI)
+            # ou rodar em intervalos inteligentes de sensorização.
+            capturar_e_enviar()
+            print("[*] Aguardando 10 segundos antes do próximo ciclo de ronda...")
+            time.sleep(10)
+        except KeyboardInterrupt:
+            print("[*] Agente perimetral finalizado pelo operador.")
+            break`}
+                            </div>
+                          </div>
+
+                          <div className="bg-[#1C2638]/40 p-3 rounded-lg border border-dashed border-emerald-500/10 text-gray-400 text-[10px] leading-relaxed font-sans mt-2">
+                            <span className="text-emerald-400 font-bold block mb-1">💡 Dica de Funcionamento Real:</span>
+                            A maioria dos DVRs Intelbras possui um campo chamado <strong>"Evento de Analíticos / Linha Virtual / IVS"</strong> com o campo <strong>"Disparar HTTP / Envio de Foto"</strong> nas configurações avançadas do equipamento. Você pode configurar o seu DVR para disparar uma requisição diretamente para o micro-agente local ou para o WhatsApp de forma instantânea sempre que alguém cruzar a linha virtual perimetral!
                           </div>
                         </div>
                       </div>
