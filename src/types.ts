@@ -58,6 +58,10 @@ export interface SupabaseN8nConfig {
   supabaseAnonKey: string;
   n8nWebhookUrl: string;
   isConnected: boolean;
+  whatsappApiType?: "disabled" | "zapi" | "evolution" | "custom_webhook";
+  whatsappApiUrl?: string;
+  whatsappApiToken?: string;
+  whatsappApiInstance?: string;
 }
 
 export interface SubscriptionPlan {

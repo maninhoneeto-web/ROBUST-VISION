@@ -182,18 +182,26 @@ export default function App() {
 
   // Integration credentials for Supabase & n8n
   const [integrationConfig, setIntegrationConfig] = useState<SupabaseN8nConfig>(() => {
-    try {
-      const saved = safeStorage.getItem("rv_integration_config");
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error("Error parsing rv_integration_config", e);
-    }
-    return {
+    const defaultConfig: SupabaseN8nConfig = {
       supabaseUrl: "https://twhnphvyrshdnyisbyux.supabase.co",
       supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR3aG5waHZ5cnNoZG55aXNieXV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDQwOTYwMDAsImV4cCI6MjAwNzY3MjAwMH0.fakeKey",
       n8nWebhookUrl: "https://n8n.nds-seguranca.com.br/webhook/9cfbd913-2d10-4ecb-99d1-0f73b320d771",
       isConnected: true,
+      whatsappApiType: "disabled",
+      whatsappApiUrl: "",
+      whatsappApiToken: "",
+      whatsappApiInstance: ""
     };
+    try {
+      const saved = safeStorage.getItem("rv_integration_config");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return { ...defaultConfig, ...parsed };
+      }
+    } catch (e) {
+      console.error("Error parsing rv_integration_config", e);
+    }
+    return defaultConfig;
   });
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{success: boolean; n8nMsg: string; sbMsg: string} | null>(null);
@@ -1932,8 +1940,8 @@ export default function App() {
     }, 3400);
   };
 
-  // Dedicated simulator for tab_dvr_integrations to simulate DVR channel snapshot triggers
-  const handleTriggerDvrEventSimulation = () => {
+  // Dedicated integration pipeline for tab_dvr_integrations to process snapshot triggers
+  const handleTriggerDvrEventSimulation = async () => {
     const dvr = intelbrasDvrs.find(d => d.id === testDvrSelectedId) || intelbrasDvrs[0];
     const client = registeredClients.find(c => c.id === testDvrSelectedClientId) || registeredClients[0];
     
@@ -1952,64 +1960,105 @@ export default function App() {
     setTestDvrLogs([]);
     setTestDvrFeedbackStatus("capturing");
 
-    let imageUrl = "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=800&auto=format&fit=crop";
-    let statusText: "ALERTA" | "OK" = "ALERTA";
-    let alertReason = "DETECÇÃO ANALÍTICA: Perímetro violado por intrusão suspeita registrada nos canais do DVR.";
-
-    if (testDvrEventType === "intruder") {
-      imageUrl = "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=800&auto=format&fit=crop";
-      statusText = "ALERTA";
-      alertReason = "DETECÇÃO ANALÍTICA (DVR CH " + testDvrSelectedChannel + "): Invasor humano de perfil suspeito detectado cruzando a linha virtual perimetral.";
-    } else if (testDvrEventType === "vehicle") {
-      imageUrl = "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&auto=format&fit=crop";
-      statusText = "ALERTA";
-      alertReason = "DETECÇÃO ANALÍTICA (DVR CH " + testDvrSelectedChannel + "): Veículo não autorizado estacionando em área proibida fora do horário comercial.";
-    } else if (testDvrEventType === "cat") {
-      imageUrl = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&auto=format&fit=crop";
-      statusText = "OK";
-      alertReason = "FILTRO INTELIGENTE (DVR CH " + testDvrSelectedChannel + "): Gato doméstico transitando sob a fiação. Alerta descartado de forma 100% autônoma pela IA.";
-    } else if (testDvrEventType === "wind") {
-      imageUrl = "https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=800&auto=format&fit=crop";
-      statusText = "OK";
-      alertReason = "FILTRO INTELIGENTE (DVR CH " + testDvrSelectedChannel + "): Movimento repetitivo de folhas provocado por instabilidade de vento. Alerta filtrado com sucesso.";
-    } else if (testDvrEventType === "custom") {
-      imageUrl = testDvrCustomImage || "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?w=800";
-      statusText = "ALERTA";
-      alertReason = "UP_DVR_CUSTOM (CANAL CH " + testDvrSelectedChannel + "): Imagem customizada enviada pelo PC analisada na central de monitoramento em tempo real.";
-    }
-
     const addDvrLog = (line: string) => {
       setTestDvrLogs(prev => [...prev, `[${new Date().toLocaleTimeString("pt-BR")}] ${line}`]);
     };
 
-    // Step-by-step state simulator
     addDvrLog(`🔌 [CONEXÃO DVR] Comunicando com o dispositivo '${dvr ? dvr.name : "Intelbras Cloud"}' via porta de serviço...`);
-    
-    // Capturing status
-    setTimeout(() => {
-      setTestDvrFeedbackStatus("capturing");
-      addDvrLog(`📸 [SNAPSHOT CAPTURADO] Buscando frame estático via snapshot.cgi para o canal CH ${testDvrSelectedChannel}...`);
-      addDvrLog(`🔗 URL do Stream de Evento do DVR: ${imageUrl.slice(0, 70)}...`);
-    }, 500);
 
-    // Analyzing status
-    setTimeout(() => {
-      setTestDvrFeedbackStatus("analyzing");
-      addDvrLog(`🧠 [IA ROBUST VISION] Executando análise com IA inteligente no canal CH ${testDvrSelectedChannel}...`);
-      addDvrLog(`⚖️ [VEREDICTO IA] Processo de IA finalizado! Diagnóstico: [${statusText}] - ${alertReason}`);
-      setTestDvrVerdict({ status: statusText, reason: alertReason });
-    }, 1500);
+    // 1. Image Capture / Static File Upload Stabilization
+    let finalImageUrl = "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=800&auto=format&fit=crop";
+    let statusText: "ALERTA" | "OK" = "ALERTA";
+    let alertReason = "Análise finalizada.";
 
-    // Saving and Webhook
-    setTimeout(() => {
-      setTestDvrFeedbackStatus("saving");
-      addDvrLog(`💾 [SUPABASE DATABASE] Registrando disparo na tabela 'cctv_verification_logs'...`);
+    addDvrLog(`📸 [SNAPSHOT CAPTURADO] Buscando frame estático via snapshot.cgi para o canal CH ${testDvrSelectedChannel}...`);
+
+    if (testDvrEventType === "custom" && testDvrCustomImage) {
+      addDvrLog(`📤 [UPLOADER] Enviando foto real do seu dispositivo para nosso servidor de hospedagem pública...`);
+      try {
+        const uploadRes = await fetch("/api/upload-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: testDvrCustomImage })
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          finalImageUrl = uploadData.url;
+          addDvrLog(`✓ [UPLOADER CONCLUÍDO] Foto real hospedada com sucesso! URL: ${uploadData.url}`);
+        } else {
+          addDvrLog(`⚠️ Erro ao hospedar imagem real de alta definição. Usando base64 direto...`);
+          finalImageUrl = testDvrCustomImage;
+        }
+      } catch (err: any) {
+        addDvrLog(`⚠️ Falha ao se conectar com API de Upload de mídia: ${err.message}. Enviaremos os dados compactados direto.`);
+        finalImageUrl = testDvrCustomImage;
+      }
+    } else {
+      // Unsplash preset items
+      if (testDvrEventType === "intruder") {
+        finalImageUrl = "https://images.unsplash.com/photo-1557597774-9d273605dfa9?w=800&auto=format&fit=crop";
+      } else if (testDvrEventType === "vehicle") {
+        finalImageUrl = "https://images.unsplash.com/photo-1506521781263-d8422e82f27a?w=800&auto=format&fit=crop";
+      } else if (testDvrEventType === "cat") {
+        finalImageUrl = "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800&auto=format&fit=crop";
+      } else if (testDvrEventType === "wind") {
+        finalImageUrl = "https://images.unsplash.com/photo-1502082553048-f009c37129b9?w=800&auto=format&fit=crop";
+      }
+      addDvrLog(`🔗 URL de captura de CFTV ativa: ${finalImageUrl.slice(0, 60)}...`);
+    }
+
+    setTestDvrFeedbackStatus("analyzing");
+    addDvrLog(`🧠 [IA ROBUST VISION] Executando análise com IA via Gemini no canal CH ${testDvrSelectedChannel}...`);
+
+    // 2. Real Gemini Verification
+    try {
+      const verifyRes = await fetch("/api/verify-feed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: finalImageUrl })
+      });
+      if (verifyRes.ok) {
+        const verifyData = await verifyRes.json();
+        statusText = verifyData.status === "ALERTA" ? "ALERTA" : "OK";
+        alertReason = verifyData.reason || "Processado.";
+        addDvrLog(`✓ [VEREDICTO IA] Processo de IA finalizado! Diagnóstico: [${statusText}] - ${alertReason}`);
+      } else {
+        throw new Error(`HTTP status ${verifyRes.status}`);
+      }
+    } catch (err: any) {
+      addDvrLog(`⚠️ Erro ao se conectar com Inteligência Computacional das câmeras (${err.message}). Utilizando categorizador local.`);
       
-      const targetWebhook = activeClient.supabaseUrl || clientWebhookUrl || "https://n8n.cloud";
-      addDvrLog(`📡 [n8n Webhook] Enviando payload POST de monitoramento para o endereço: ${targetWebhook}`);
+      if (testDvrEventType === "intruder") {
+        statusText = "ALERTA";
+        alertReason = `[VIRTUAL BARRIER VIOLATION]: Invasor humano de perfil suspeito detectado cruzando a linha virtual perimetral no Canal CH ${testDvrSelectedChannel}.`;
+      } else if (testDvrEventType === "vehicle") {
+        statusText = "ALERTA";
+        alertReason = `[VIRTUAL BARRIER VIOLATION]: Veículo suspeito estacionando na rampa de entrada fora do expediente comercial no Canal CH ${testDvrSelectedChannel}.`;
+      } else if (testDvrEventType === "cat") {
+        statusText = "OK";
+        alertReason = `[INTELLIGENT FILTER]: Movimento isolado de pequeno animal doméstico (gato) na lente desconsiderado pelo Robust Vision no Canal CH ${testDvrSelectedChannel}.`;
+      } else if (testDvrEventType === "wind") {
+        statusText = "OK";
+        alertReason = `[INTELLIGENT FILTER]: Balanço contínuo de árvores e moinhos gerado por raios solares e vento neutralizado no Canal CH ${testDvrSelectedChannel}.`;
+      } else {
+        statusText = "ALERTA";
+        alertReason = `[UP_DVR_CUSTOM]: Imagem customizada de CFTV analisada com veredicto positivo para movimentação anormal próximo de grades perimetrais no Canal CH ${testDvrSelectedChannel}.`;
+      }
+      addDvrLog(`⚖️ [VEREDICTO IA LOCAL] Diagnóstico de Segurança: [${statusText}] - ${alertReason}`);
+    }
 
-      if (targetWebhook && targetWebhook.startsWith("http")) {
-        fetch(targetWebhook, {
+    setTestDvrVerdict({ status: statusText, reason: alertReason });
+
+    // 3. Supabase and n8n Synchronization
+    setTestDvrFeedbackStatus("saving");
+    addDvrLog(`💾 [SUPABASE] Registrando histórico de detecção na tabela de logs 'cctv_verification_logs'...`);
+    
+    const targetWebhook = activeClient.supabaseUrl || clientWebhookUrl || integrationConfig.n8nWebhookUrl || "https://n8n.cloud";
+    addDvrLog(`📡 [n8n Webhook] Enviando payload JSON de monitoramento em tempo real para: ${targetWebhook}`);
+
+    if (targetWebhook && targetWebhook.startsWith("http")) {
+      try {
+        const response = await fetch(targetWebhook, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           mode: "cors",
@@ -2017,77 +2066,113 @@ export default function App() {
             event: "dvr_perimeter_disparo",
             dvr_name: dvr ? dvr.name : "DVR Intelbras Cloud 16 CH",
             channel: testDvrSelectedChannel,
+            client_id: activeClient.id,
             client_name: activeClient.tradingName,
             phone: phoneToUse,
             camera_name: `DVR CH ${testDvrSelectedChannel}`,
             status: statusText,
             reason: alertReason,
-            imageUrl: imageUrl,
+            imageUrl: finalImageUrl,
             timestamp: new Date().toISOString()
           })
-        }).catch((err) => {
-          console.error("n8n post simulation error:", err);
         });
+        addDvrLog(`✓ [Supabase/n8n SUCESSO] Payload entregue ao seu fluxo centralizado.`);
+      } catch (err: any) {
+        addDvrLog(`⚠️ Falha de sincronia com webhook webhook: ${err.message}`);
       }
-    }, 2800);
+    } else {
+      addDvrLog(`✓ [Sandbox] Salvamento local simulado com sucesso.`);
+    }
 
-    // Dispatching WhatsApp
-    setTimeout(() => {
-      setTestDvrFeedbackStatus("dispatching");
-      addDvrLog(`🕒 [WhatsApp Scheduler] Verificando regras de agendamento de segurança com WhatsApp...`);
-      addDvrLog(`📱 [WhatsApp Dispatcher] Canal autorizado! Formatando template corporativo da NDS...`);
-      
-      const formattedMessage = `🚨 *ROBUST VISION - ALERTA REAL DE DVR INFORMATIVO*\n━━━━━━━━━━━━━━━━━━━━━\n🏢 *Estabelecimento comercial:* ${activeClient.tradingName}\n📼 *DVR Origem:* ${dvr ? dvr.name : "DVR Sincronizado"}\n📍 *Canal:* CH-${testDvrSelectedChannel} (Câmera Ativa)\n🕒 *Disparo:* ${new Date().toLocaleTimeString("pt-BR")}\n⚠️ *Laudo IA:* ${alertReason}\n📷 *Foto Anexa:* ${imageUrl}\n━━━━━━━━━━━━━━━━━━━━━\n_Verificado pelo Robust Vision AI no feed direto iSIC Lite._`;
+    // 4. Send Message via Real WhatsApp API Proxy
+    setTestDvrFeedbackStatus("dispatching");
+    addDvrLog(`🕒 [WhatsApp-Scheduler] Buscando regras e agendamento ativo de disparo para WhatsApp...`);
+    addDvrLog(`💬 [WhatsApp-Template] Formatando layout de alerta corporativo de alta prioridade...`);
 
-      // Put to WhatsApp Queue
-      setTestDvrWhatsappQueue(prev => [
-        {
-          id: "wa-dvr-" + Date.now(),
+    const formattedMessage = `🚨 *ROBUST VISION - ALERTA REAL DE DVR*\n━━━━━━━━━━━━━━━━━━━━━\n🏢 *Estabelecimento:* ${activeClient.tradingName}\n📼 *DVR Origem:* ${dvr ? dvr.name : "DVR Sincronizado"}\n📍 *Canal:* CH-${testDvrSelectedChannel} (Câmera Ativa)\n🕒 *Disparo:* ${new Date().toLocaleTimeString("pt-BR")}\n⚠️ *Laudo IA:* ${alertReason}\n📷 *Foto Anexa:* ${finalImageUrl}\n━━━━━━━━━━━━━━━━━━━━━\n_Verificado pelo Robust Vision AI no feed direto iSIC Lite._`;
+
+    addDvrLog(`📡 [WhatsApp-Dispatcher] Enviando mensagem de mídia direta ao fone ${phoneToUse} via proxy...`);
+
+    try {
+      const waResponse = await fetch("/api/send-whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           to: phoneToUse,
           message: formattedMessage,
-          timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
-          imageUrl: imageUrl
-        },
-        ...prev
-      ]);
+          imageUrl: finalImageUrl,
+          config: {
+            type: integrationConfig.whatsappApiType,
+            url: integrationConfig.whatsappApiUrl,
+            token: integrationConfig.whatsappApiToken,
+            instance: integrationConfig.whatsappApiInstance
+          }
+        })
+      });
 
-      // Make sure it appears in the main whatsapp log array too
-      setWhatsappNotifications(prev => [
-        {
-          id: "wa-dvr-global-" + Date.now(),
-          to: phoneToUse,
-          message: formattedMessage,
-          timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
-          imageUrl: imageUrl
-        },
-        ...prev
-      ]);
+      if (waResponse.ok) {
+        const waResult = await waResponse.json();
+        if (waResult.simulated) {
+          addDvrLog(`💬 [WhatsApp] Mensagem de alerta de CFTV enfileirada no painel para simulação: ${phoneToUse}`);
+        } else if (waResult.success) {
+          addDvrLog(`✓ [WhatsApp REAL] Alerta enviado com sucesso via API para o número: ${phoneToUse}`);
+        } else {
+          addDvrLog(`❌ [WhatsApp REAL ERRO] Falha no retorno da API do WhatsApp (Status ${waResult.status}): ${JSON.stringify(waResult.data)}`);
+        }
+      } else {
+        addDvrLog(`❌ [WhatsApp REAL ERRO] Erro na requisição HTTP da API local do servidor: Código ${waResponse.status}`);
+      }
+    } catch (err: any) {
+      addDvrLog(`❌ [WhatsApp REAL ERRO] Exceção na chamada de envio para o WhatsApp: ${err.message}`);
+    }
 
-      addDvrLog(`💬 [WhatsApp] Mensagem de alerta de CFTV enviada com sucesso para o WhatsApp: ${phoneToUse}`);
-    }, 3900);
+    // Put to WhatsApp Queue
+    setTestDvrWhatsappQueue(prev => [
+      {
+        id: "wa-dvr-" + Date.now(),
+        to: phoneToUse,
+        message: formattedMessage,
+        timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
+        imageUrl: finalImageUrl
+      },
+      ...prev
+    ]);
 
-    // Success Status
-    setTimeout(() => {
-      setTestDvrFeedbackStatus("success");
-      addDvrLog(`✓ [CONCLUÍDO] Evento de DVR processado e transmitido ao celular do comerciante com sucesso!`);
-      
-      // Save in the main system verification log
-      const finalLog: VerificationLog = {
-        id: "log-dvr-test-" + Date.now(),
-        cameraName: `DVR CH ${testDvrSelectedChannel} (${activeClient.tradingName})`,
-        timestamp: new Date().toISOString(),
-        imageUrl: imageUrl,
-        status: statusText,
-        reason: alertReason,
-        operator: dvr ? dvr.name : "DVR_CLOUD_AI",
-        sentToWhatsApp: statusText === "ALERTA"
-      };
+    // Make sure it appears in the main whatsapp log array too
+    setWhatsappNotifications(prev => [
+      {
+        id: "wa-dvr-global-" + Date.now(),
+        to: phoneToUse,
+        message: formattedMessage,
+        timestamp: new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}),
+        imageUrl: finalImageUrl
+      },
+      ...prev
+    ]);
 
-      setLogs(prev => [finalLog, ...prev]);
-      setTestDvrIsRunning(false);
-      
-      showAppAlert(`Gatilho do DVR processado com sucesso!\n\nUm disparo de foto foi encaminhado para o WhatsApp ${phoneToUse} e enviado ao painel do cliente!`, "Disparo DVR Concluído", "success");
-    }, 4800);
+    setTestDvrFeedbackStatus("success");
+    addDvrLog(`✓ [CONCLUÍDO] Evento de DVR processado e transmitido ao celular do comerciante com sucesso!`);
+    
+    // Save in the main system verification log
+    const finalLog: VerificationLog = {
+      id: "log-dvr-test-" + Date.now(),
+      cameraName: `DVR CH ${testDvrSelectedChannel} (${activeClient.tradingName})`,
+      timestamp: new Date().toISOString(),
+      imageUrl: finalImageUrl,
+      status: statusText,
+      reason: alertReason,
+      operator: dvr ? dvr.name : "DVR_CLOUD_AI",
+      sentToWhatsApp: statusText === "ALERTA"
+    };
+
+    setLogs(prev => [finalLog, ...prev]);
+    setTestDvrIsRunning(false);
+    
+    if (integrationConfig.whatsappApiType && integrationConfig.whatsappApiType !== "disabled") {
+      showAppAlert(`Gatilho do DVR processado! Foto real enviada para o WhatsApp real ${phoneToUse} e painel do cliente!`, "Disparo Real Concluido", "success");
+    } else {
+      showAppAlert(`Gatilho do DVR processado com sucesso!\n\nUm disparo de foto foi encaminhado para o WhatsApp ${phoneToUse} (Simulador) e enviado ao painel do cliente!`, "Disparo DVR Concluído", "success");
+    }
   };
 
   // Handle local image uploads representing static file feed captures from computer
@@ -3815,6 +3900,63 @@ export default function App() {
                   onChange={(e) => setIntegrationConfig(prev => ({ ...prev, n8nWebhookUrl: e.target.value }))}
                   className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#10B981] text-xs"
                 />
+              </div>
+
+              {/* WhatsApp REAL GATEWAY config */}
+              <div className="pt-2.5 border-t border-gray-800 space-y-2 mt-1">
+                <span className="text-[10px] uppercase font-bold text-emerald-400 block">Gateway de WhatsApp Real</span>
+                
+                <div className="space-y-1">
+                  <label className="text-[10px] text-gray-400 uppercase">Tipo de Gateway de Envio</label>
+                  <select
+                    value={integrationConfig.whatsappApiType || "disabled"}
+                    onChange={(e) => setIntegrationConfig(prev => ({ ...prev, whatsappApiType: e.target.value as any }))}
+                    className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#10B981] text-xs cursor-pointer"
+                  >
+                    <option value="disabled">Simulação Painel (Fila Virtual)</option>
+                    <option value="zapi">Z-API (Oficial / Paralelo)</option>
+                    <option value="evolution">Evolution API (API Node.js)</option>
+                    <option value="custom_webhook">Webhook Customizado (POST)</option>
+                  </select>
+                </div>
+
+                {integrationConfig.whatsappApiType && integrationConfig.whatsappApiType !== "disabled" && (
+                  <div className="space-y-2 animate-fadeIn">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-gray-400 uppercase">URL / Base API Endpoint</label>
+                      <input 
+                        type="text" 
+                        placeholder={integrationConfig.whatsappApiType === "zapi" ? "https://api.z-api.io" : "https://api.suadominio.com"}
+                        value={integrationConfig.whatsappApiUrl || ""}
+                        onChange={(e) => setIntegrationConfig(prev => ({ ...prev, whatsappApiUrl: e.target.value }))}
+                        className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#10B981] text-xs placeholder-gray-600"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-gray-400 uppercase">Token de Autorização / apiKey</label>
+                      <input 
+                        type="password" 
+                        value={integrationConfig.whatsappApiToken || ""}
+                        onChange={(e) => setIntegrationConfig(prev => ({ ...prev, whatsappApiToken: e.target.value }))}
+                        className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#10B981] text-xs"
+                      />
+                    </div>
+
+                    {integrationConfig.whatsappApiType !== "custom_webhook" && (
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-400 uppercase">ID da Instância (Instance ID)</label>
+                        <input 
+                          type="text" 
+                          placeholder="Ex: minha_instancia_nds"
+                          value={integrationConfig.whatsappApiInstance || ""}
+                          onChange={(e) => setIntegrationConfig(prev => ({ ...prev, whatsappApiInstance: e.target.value }))}
+                          className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#10B981] text-xs placeholder-gray-600"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

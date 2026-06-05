@@ -14,6 +14,170 @@ const PORT = 3000;
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
+// Set up uploads directory and static file serving for real DVR snap uploads
+const uploadsDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use("/api/uploads", express.static(uploadsDir));
+
+// API Endpoint to process and save real image uploads from the DVR/Computer
+app.post("/api/upload-image", async (req, res) => {
+  try {
+    const { image } = req.body;
+    if (!image) {
+      return res.status(400).json({ error: "Nenhum dado de imagem fornecido." });
+    }
+
+    let base64Data = "";
+    let extension = "jpg";
+
+    if (image.startsWith("data:")) {
+      const matches = image.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+      if (matches && matches.length === 3) {
+        const mimeType = matches[1];
+        base64Data = matches[2];
+        extension = mimeType.split("/")[1] || "jpg";
+        if (extension === "jpeg") extension = "jpg";
+      } else {
+        return res.status(400).json({ error: "Formato de Data URL inválido." });
+      }
+    } else {
+      base64Data = image;
+    }
+
+    const buffer = Buffer.from(base64Data, "base64");
+    const filename = `dvr-${Date.now()}-${Math.floor(Math.random() * 1000)}.${extension}`;
+    const filePath = path.join(uploadsDir, filename);
+
+    fs.writeFileSync(filePath, buffer);
+
+    const host = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+    const cleanHost = host.endsWith("/") ? host.slice(0, -1) : host;
+    const imageUrl = `${cleanHost}/api/uploads/${filename}`;
+
+    return res.json({
+      success: true,
+      filename,
+      url: imageUrl,
+    });
+  } catch (err: any) {
+    console.error("Erro no upload de imagem:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// API Endpoint proxy to safely dispatch messages and images to Z-API, Evolution API or Webhooks
+app.post("/api/send-whatsapp", async (req, res) => {
+  try {
+    const { to, message, imageUrl, config } = req.body;
+    if (!to || !message) {
+      return res.status(400).json({ error: "Parâmetros 'to' e 'message' são obrigatórios." });
+    }
+
+    const { type, url, token, instance } = config || {};
+    if (!type || type === "disabled") {
+      return res.json({
+        success: true,
+        simulated: true,
+        message: "Envio simulado no painel com sucesso (API de Envio Real desabilitada em configurações)."
+      });
+    }
+
+    let responseStatus = 200;
+    let responseData = null;
+
+    if (type === "zapi") {
+      const baseUrl = url || "https://api.z-api.io";
+      const cleanUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+      const targetUrl = `${cleanUrl}/instances/${instance}/token/${token}/send-image`;
+
+      const reqBody: any = {
+        phone: to,
+        caption: message
+      };
+
+      if (imageUrl) {
+        reqBody.image = imageUrl;
+      }
+
+      console.log(`Sending to Z-API (${targetUrl}):`, JSON.stringify(reqBody));
+      const resZapi = await fetch(targetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reqBody)
+      });
+
+      responseStatus = resZapi.status;
+      responseData = await resZapi.json().catch(() => ({}));
+    } else if (type === "evolution") {
+      const baseUrl = url;
+      if (!baseUrl) {
+        throw new Error("URL da Evolution API não está configurada.");
+      }
+      const cleanUrl = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+      const targetUrl = `${cleanUrl}/message/sendMedia/${instance}`;
+
+      const reqBody: any = {
+        number: to,
+        caption: message,
+        mediaType: "image"
+      };
+
+      if (imageUrl) {
+        reqBody.media = imageUrl;
+      }
+
+      console.log(`Sending to Evolution API (${targetUrl}):`, JSON.stringify(reqBody));
+      const resEvo = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": token
+        },
+        body: JSON.stringify(reqBody)
+      });
+
+      responseStatus = resEvo.status;
+      responseData = await resEvo.json().catch(() => ({}));
+    } else if (type === "custom_webhook") {
+      if (!url) {
+        throw new Error("URL do Webhook customizado não configurada.");
+      }
+      const reqHeaders: any = { "Content-Type": "application/json" };
+      if (token) {
+        reqHeaders["Authorization"] = `${token}`;
+      }
+
+      const reqBody = {
+        to,
+        message,
+        imageUrl,
+        timestamp: new Date().toISOString()
+      };
+
+      console.log(`Sending to Custom Webhook (${url}):`, JSON.stringify(reqBody));
+      const resWeb = await fetch(url, {
+        method: "POST",
+        headers: reqHeaders,
+        body: reqBody ? JSON.stringify(reqBody) : ""
+      });
+
+      responseStatus = resWeb.status;
+      responseData = await resWeb.json().catch(() => ({}));
+    }
+
+    return res.json({
+      success: responseStatus >= 200 && responseStatus < 300,
+      status: responseStatus,
+      data: responseData
+    });
+  } catch (err: any) {
+    console.error("Erro no envio do WhatsApp Proxy:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Initialize GoogleGenAI SDK with environment variable as instructed
 // Use lazy instantiation or direct checks to gracefully handle missing keys
 const getGeminiClient = () => {
@@ -111,21 +275,61 @@ app.post("/api/verify-feed", async (req, res) => {
     if (matches && matches.length === 3) {
       mimeType = matches[1];
       base64Data = matches[2];
-    } else {
-      // If NOT a base64 string, process as a local server file path for robustness (Vite asset fallback)
+    } else if (image.startsWith("http://") || image.startsWith("https://")) {
+      // It is an HTTP URL (can be our local uploaded static file or an external preset)
       try {
-        let relativePath = image;
-        if (image.startsWith("http://") || image.startsWith("https://")) {
-          try {
-            const urlObj = new URL(image);
-            relativePath = urlObj.pathname;
-          } catch (_) {}
+        const urlObj = new URL(image);
+        const pathname = urlObj.pathname;
+        
+        // Handle local uploads directory folder route
+        if (pathname.includes("/api/uploads/")) {
+          const filename = pathname.split("/").pop();
+          const filePath = path.join(process.cwd(), "uploads", filename || "");
+          if (fs.existsSync(filePath)) {
+            const ext = path.extname(filePath).toLowerCase();
+            mimeType = ext === ".png" ? "image/png" : "image/jpeg";
+            base64Data = fs.readFileSync(filePath).toString("base64");
+          } else {
+            throw new Error(`Arquivo não localizado localmente no servidor: ${filename}`);
+          }
+        } else {
+          // External reference (like unsplash presets). Fetch and buffer
+          console.info(`[REQUISITÓRIO CFTV] Fazendo download de imagem externa para conversão: ${image}`);
+          const imgRes = await fetch(image);
+          if (imgRes.ok) {
+            const arrayBuffer = await imgRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+            mimeType = contentType;
+            base64Data = buffer.toString("base64");
+          } else {
+            throw new Error(`Servidor remoto retornou código de erro HTTP ${imgRes.status}`);
+          }
         }
-
-        // Strip queries (e.g. ?import or ?v=...)
-        relativePath = relativePath.split("?")[0].split("#")[0];
-
-        // Try mapping path relative to workspace or inside /src/assets/images
+      } catch (err: any) {
+        console.warn(`[REDE] Tentativa de baixar via URL falhou (${err.message}). Utilizando fallback estático local...`);
+        try {
+          const basename = path.basename(image.split("?")[0].split("#")[0]);
+          const fallbackPath = path.join(process.cwd(), "src", "assets", "images", basename);
+          if (fs.existsSync(fallbackPath)) {
+            const ext = path.extname(fallbackPath).toLowerCase();
+            mimeType = ext === ".png" ? "image/png" : "image/jpeg";
+            base64Data = fs.readFileSync(fallbackPath).toString("base64");
+          } else {
+            return res.status(400).json({
+              error: `Erro ao decodificar recurso de CFTV: ${err.message}. Certifique-se de enviar uma imagem Base64 válida.`
+            });
+          }
+        } catch (subErr: any) {
+          return res.status(400).json({
+            error: `Falha total no mapeamento de imagem CFTV do DVR: ${subErr.message}`
+          });
+        }
+      }
+    } else {
+      // Treat as a relative localized file folder path
+      try {
+        let relativePath = image.split("?")[0].split("#")[0];
         let filePath = "";
         if (relativePath.startsWith("/")) {
           filePath = path.join(process.cwd(), relativePath);
@@ -138,7 +342,6 @@ app.post("/api/verify-feed", async (req, res) => {
           mimeType = ext === ".png" ? "image/png" : "image/jpeg";
           base64Data = fs.readFileSync(filePath).toString("base64");
         } else {
-          // Check inside standard /src/assets/images directory
           const basename = path.basename(relativePath);
           const fallbackPath = path.join(process.cwd(), "src", "assets", "images", basename);
           if (fs.existsSync(fallbackPath)) {
@@ -147,13 +350,13 @@ app.post("/api/verify-feed", async (req, res) => {
             base64Data = fs.readFileSync(fallbackPath).toString("base64");
           } else {
             return res.status(400).json({
-              error: `Formato de imagem inválido. Não foi possível localizar o arquivo de imagem '${relativePath}' no servidor. Forneça uma string Base64 válida.`
+              error: `Erro de mapeamento local: Arquivo estático '${relativePath}' não encontrado sob diretório sandbox.`
             });
           }
         }
       } catch (err: any) {
         return res.status(400).json({
-          error: `Erro ao processar imagem local no servidor: ${err.message}`
+          error: `Erro ao processar imagem local: ${err.message}`
         });
       }
     }
