@@ -2230,13 +2230,13 @@ export default function App() {
                 setActiveTab("dvr_integrations");
                 setIsMobileSidebarOpen(false);
               }}
-              className={`w-full py-3 px-3.5 rounded-xl font-bold flex items-center gap-3 transition-all focus:outline-none cursor-pointer text-left text-xs ${
+              className={`w-full py-2.5 px-3.5 rounded-xl font-bold flex items-center gap-3 transition-all focus:outline-none cursor-pointer text-left text-xs ${
                 activeTab === "dvr_integrations"
                   ? "bg-emerald-50/80 text-emerald-700 border border-emerald-250 shadow-sm font-extrabold"
                   : "text-slate-500 hover:text-slate-800 hover:bg-slate-50 border border-transparent"
               }`}
             >
-              <Sliders className="w-4 h-4 text-emerald-600 shrink-0" />
+              <Sliders className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <div className="min-w-0">
                 <span className="block truncate text-[11px] uppercase">DVR & Cloud Sync</span>
                 <span className="block text-[8px] font-normal text-slate-400 truncate mt-0.5">Integrações n8n e Intelbras</span>
@@ -2244,136 +2244,151 @@ export default function App() {
             </button>
           </div>
         </div>
-
-        {/* Bottom Config Widgets block inside Sidebar */}
-        <div className="pt-3 border-t border-slate-100 mt-4 space-y-3 shrink-0 bg-white">
-          <p className="text-[9px] text-emerald-800 uppercase font-bold tracking-widest block mb-0.5">Central de Simulação</p>
+        <div className="pt-3.5 border-t border-slate-100 mt-5 space-y-4 shrink-0 bg-white">
+          <p className="text-[10px] text-emerald-800 uppercase font-extrabold tracking-wider block mb-1">Central de Simulação</p>
           
           {/* FIREBASE REAL-TIME CLOUD SYNC MODULE */}
-          <div className="bg-slate-50 border border-slate-200/60 rounded-lg p-3 space-y-2 text-slate-700">
+          <div className="bg-slate-50/50 border border-slate-200/60 rounded-xl p-3.5 space-y-3 text-slate-700">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-slate-800 font-bold uppercase tracking-wider flex items-center gap-1.5 font-sans">
-                <Database className="w-3.5 h-3.5 text-emerald-600" /> Banco Cloud Base
+              <span className="text-[10px] text-slate-800 font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                <Database className="w-3.5 h-3.5 text-emerald-600" /> Sincronização Cloud
               </span>
-              <span className={`w-2 h-2 rounded-full ${isFirebaseActive ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+              <span className="flex items-center gap-1 font-bold text-[8px]">
+                <span className={`w-1.5 h-1.5 rounded-full ${isFirebaseActive ? "bg-emerald-500 animate-pulse" : "bg-amber-400"}`} />
+                <span className={isFirebaseActive ? "text-emerald-705" : "text-amber-600"}>{isFirebaseActive ? "NUVEM" : "LOCAL"}</span>
+              </span>
             </div>
             {isFirebaseActive ? (
-              <div className="space-y-1.5 font-sans text-xs">
-                <p className="text-[10px] text-emerald-700 font-semibold leading-tight">
-                  ✓ Conectado ao Firebase
-                </p>
-                <div className="bg-white border border-slate-200/80 p-1.5 rounded text-[9.5px] leading-normal text-slate-600">
-                  <div className="truncate font-semibold text-slate-800">
-                    {fbUser?.isAnonymous ? "🔒 Usuário Provisório" : (fbUser?.displayName || "Administrador")}
+              <div className="space-y-2 text-xs font-sans">
+                <div className="bg-white border border-slate-200/70 p-2 rounded-lg text-slate-700 flex items-center gap-2 shadow-sm">
+                  <div className="w-6 h-6 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-[10px] text-emerald-700 font-extrabold shrink-0">
+                    {fbUser?.displayName ? fbUser.displayName.charAt(0).toUpperCase() : "U"}
                   </div>
-                  <div className="truncate text-[8px] text-slate-400">
-                    {fbUser?.isAnonymous ? "Sincronização Ativa na Nuvem" : fbUser?.email}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[10px] font-bold text-slate-800">
+                      {fbUser?.isAnonymous ? "🔒 Usuário Provisório" : (fbUser?.displayName || "Administrador")}
+                    </div>
+                    <div className="truncate text-[8px] text-slate-400">
+                      {fbUser?.isAnonymous ? "Sincronização Ativa na Nuvem" : fbUser?.email}
+                    </div>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={fbLogout}
-                  className="w-full text-center text-[9px] font-bold text-red-600 hover:text-red-700 hover:bg-red-50 py-1 bg-red-50/50 rounded border border-red-200 cursor-pointer transition-all uppercase"
+                  className="w-full text-center text-[9px] font-bold text-rose-600 hover:text-white hover:bg-rose-600 py-1.5 bg-rose-50/70 rounded-lg border border-rose-200 cursor-pointer transition-all uppercase"
                 >
                   Desconectar Conta
                 </button>
               </div>
             ) : (
-              <div className="space-y-2 text-xs">
-                <p className="text-[9px] text-slate-500 leading-tight">
-                  Rodando em <strong className="text-emerald-700 font-sans">modo de demonstração offline</strong>. Sincronize com a nuvem utilizando os métodos abaixo:
+              <div className="space-y-2 text-[10px]">
+                <p className="text-[9px] text-slate-450 leading-relaxed font-medium">
+                  Persista canais, clientes e históricos de forma segura na nuvem:
                 </p>
 
-                {/* 1. ANONYMOUS AUTH: 100% IFRAME COMPATIBLE */}
-                <button
-                  type="button"
-                  onClick={fbLoginAnonymously}
-                  className="w-full font-bold text-center text-[9px] text-white bg-emerald-600 hover:bg-emerald-700 py-1.5 rounded flex items-center justify-center gap-1 cursor-pointer transition-all uppercase shadow-sm"
-                >
-                  <Database className="w-3 h-3" />
-                  Sincronização Direta Instantânea
-                </button>
-
-                {/* Info Text about iframe popup limitations */}
-                <p className="text-[8.5px] text-slate-400 leading-normal border-t border-slate-100 pt-1.5">
-                  Se preferir testar com sua conta Google real:
-                </p>
-
-                {/* 2. GOOGLE AUTH POPUP */}
-                <button
-                  type="button"
-                  onClick={fbLogin}
-                  className="w-full font-bold text-center text-[9px] text-emerald-800 bg-emerald-100 hover:bg-emerald-200 py-1 rounded flex items-center justify-center gap-1 cursor-pointer transition-all uppercase text-[9.5px]"
-                >
-                  <RefreshCw className="w-3 h-3 text-emerald-750" />
-                  Utilizar Conta Google
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={fbLoginAnonymously}
+                    className="w-full font-extrabold text-center text-[8.5px] text-white bg-emerald-605 hover:bg-emerald-705 py-2 px-1 rounded-lg flex items-center justify-center gap-1 cursor-pointer transition-all uppercase shadow-sm"
+                    title="Conectar de forma provisória"
+                  >
+                    <Sliders className="w-2.5 h-2.5 shrink-0" />
+                    Rápido
+                  </button>
+                  <button
+                    type="button"
+                    onClick={fbLogin}
+                    className="w-full font-extrabold text-center text-[8.5px] text-emerald-800 bg-emerald-50/60 hover:bg-emerald-100/80 py-2 px-1 rounded-lg border border-emerald-200 flex items-center justify-center gap-1 cursor-pointer transition-all uppercase"
+                    title="Conectar com sua conta Google real"
+                  >
+                    <RefreshCw className="w-2.5 h-2.5 text-emerald-700 shrink-0" />
+                    Google
+                  </button>
+                </div>
               </div>
             )}
           </div>
           
-          {/* Relógio de testes */}
-          <div className="bg-slate-50 border border-slate-200/60 rounded-lg p-2 space-y-1">
-            <span className="text-[8px] text-slate-500 font-bold flex items-center gap-1 uppercase">
-              <Clock className="w-3 h-3 text-emerald-600" /> Relógio de Simulação:
+          {/* SIMULATION CONTROLS GRID */}
+          <div className="bg-slate-50/50 border border-slate-200/60 rounded-xl p-3.5 space-y-3">
+            <span className="text-[10px] text-slate-800 font-extrabold flex items-center gap-1.5 uppercase tracking-wider">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-600" /> Parâmetros Ativos
             </span>
-            <input 
-              type="time" 
-              value={systemMockTime}
-              onChange={(e) => setSystemMockTime(e.target.value)}
-              className="w-full bg-white text-slate-800 border border-slate-200 rounded px-2 py-1 font-bold text-center focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs cursor-pointer"
-            />
+            
+            <div className="grid grid-cols-2 gap-2">
+              {/* Relógio de testes */}
+              <div className="bg-white border border-slate-200 rounded-lg p-2 flex flex-col justify-between h-[52px] shadow-sm">
+                <span className="text-[7.5px] text-slate-400 font-bold uppercase flex items-center gap-1 w-full truncate">
+                  <Clock className="w-2.5 h-2.5 text-emerald-600 shrink-0" /> Relógio
+                </span>
+                <input 
+                  type="time" 
+                  value={systemMockTime}
+                  onChange={(e) => setSystemMockTime(e.target.value)}
+                  className="w-full bg-transparent text-slate-805 font-extrabold text-center focus:outline-none text-[11px] cursor-pointer mt-0.5"
+                />
+              </div>
+
+              {/* iSIC Connection Status */}
+              <button 
+                onClick={() => setIsicLiteConnected(!isicLiteConnected)}
+                className={`border rounded-lg p-2 flex flex-col justify-between h-[52px] cursor-pointer text-left transition-all shadow-sm ${
+                  isicLiteConnected 
+                    ? "bg-emerald-50/40 text-emerald-700 border-emerald-200 hover:bg-emerald-50/80" 
+                    : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-150"
+                }`}
+              >
+                <span className="text-[7.5px] text-slate-400 font-bold uppercase flex items-center gap-1 w-full truncate">
+                  <Wifi className="w-2.5 h-2.5 text-emerald-600 shrink-0" /> Canal
+                </span>
+                <span className="text-[9.5px] font-extrabold block uppercase mt-0.5 truncate w-full">
+                  {isicLiteConnected ? "Nuvem Pro" : "Local"}
+                </span>
+              </button>
+
+              {/* Mode Toggle Banner */}
+              <button
+                id="mode_toggle_btn"
+                onClick={() => setIsSimplifiedMode(!isSimplifiedMode)}
+                className={`border rounded-lg p-2 flex flex-col justify-between h-[52px] cursor-pointer text-left transition-all shadow-sm ${
+                  isSimplifiedMode 
+                    ? "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-150" 
+                    : "bg-emerald-50/40 text-emerald-700 border-emerald-200 hover:bg-emerald-50/80"
+                }`}
+                title="Alternar Banner de Ajuda Explanatório"
+              >
+                <span className="text-[7.5px] text-slate-400 font-bold uppercase">Banner</span>
+                <span className="text-[9.5px] font-extrabold block uppercase mt-0.5 truncate w-full">
+                  {isSimplifiedMode ? "SLIM" : "ATIVO"}
+                </span>
+              </button>
+
+              {/* Siren Alert Toggle */}
+              <button 
+                type="button"
+                onClick={() => {
+                  setStats(prev => ({
+                    ...prev,
+                    sirenActive: !prev.sirenActive
+                  }));
+                }}
+                className={`border rounded-lg p-2 flex flex-col justify-between h-[52px] cursor-pointer text-left transition-all shadow-sm ${
+                  stats.sirenActive 
+                    ? "bg-rose-100/90 border-rose-300 text-rose-700 hover:bg-rose-200/90" 
+                    : "bg-white border-slate-200 text-slate-600 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200"
+                }`}
+              >
+                <span className="text-[7.5px] text-slate-400 font-bold uppercase flex items-center gap-1 w-full truncate">
+                  <AlertTriangle className="w-2.5 h-2.5 text-rose-500 shrink-0" /> Pânico
+                </span>
+                <span className="text-[9.5px] font-extrabold block uppercase mt-0.5 truncate w-full">
+                  {stats.sirenActive ? "ALERTA" : "DISPARAR"}
+                </span>
+              </button>
+            </div>
           </div>
-
-          {/* iSIC Connection Status */}
-          <button 
-            onClick={() => setIsicLiteConnected(!isicLiteConnected)}
-            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border transition-all text-left text-[9.5px] cursor-pointer ${
-              isicLiteConnected 
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200" 
-                : "bg-amber-50 text-amber-700 border-amber-250"
-            }`}
-          >
-            <span className="font-bold">STATUS DE SINAL:</span>
-            <span className="flex items-center gap-1 font-extrabold uppercase">
-              <span className={`w-1.5 h-1.5 rounded-full ${isicLiteConnected ? "bg-emerald-500 animate-ping" : "bg-amber-500"}`} />
-              {isicLiteConnected ? "NUVEM PRO" : "LOCAL"}
-            </span>
-          </button>
-
-          {/* Siren Alert Toggle */}
-          <button 
-            type="button"
-            onClick={() => {
-              setStats(prev => ({
-                ...prev,
-                sirenActive: !prev.sirenActive
-              }));
-            }}
-            className={`w-full text-[9px] py-1.5 rounded border font-semibold uppercase transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
-              stats.sirenActive 
-                ? "bg-rose-600 border-rose-500 text-white animate-pulse" 
-                : "bg-rose-50/50 text-rose-605 border-rose-200 hover:bg-rose-50 hover:text-rose-700"
-            }`}
-          >
-            <AlertTriangle className="w-3 h-3" />
-            {stats.sirenActive ? "DESATIVAR ALTERTAS" : "🔴 DISPARAR ALARME"}
-          </button>
-
-          {/* Mode Toggle Banner */}
-          <button
-            id="mode_toggle_btn"
-            onClick={() => setIsSimplifiedMode(!isSimplifiedMode)}
-            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg border transition-all text-[9.5px] cursor-pointer ${
-              isSimplifiedMode 
-                ? "bg-emerald-50 text-emerald-800 border-emerald-200" 
-                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-800"
-            }`}
-            title="Alternar Banner de Ajuda Explanatório"
-          >
-            <span className="font-semibold uppercase text-[9px]">VISTA BANNER:</span>
-            <span className="font-extrabold uppercase">{isSimplifiedMode ? "SLIM" : "PADRÃO"}</span>
-          </button>
 
           <div className="flex items-center justify-between text-[8px] text-slate-400 font-mono mt-1 pt-1.5 border-t border-slate-150">
             <span className="flex items-center gap-0.5"><span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" /> CLOUD DIRECT APIS</span>
@@ -7696,16 +7711,16 @@ if __name__ == '__main__':
           </section>
         )}
 
-      </main>
+        {/* FOOTER STATS INFO */}
+        <footer className="border-t border-slate-200 mt-12 pt-6 pb-2 text-xs font-sans text-center text-slate-400">
+          <div className="max-w-7xl mx-auto px-4">
+            <p className="uppercase tracking-widest text-emerald-600 font-bold mb-1">Robust Vision Security Layer</p>
+            <p className="text-slate-500 font-medium">Operando em ambiente integrado iSIC Lite e CFTV para envio direcionado</p>
+            <p className="text-[10px] text-slate-400 mt-1.5">© 2026 Robust Vision Inc. Todos os Direitos Reservados.</p>
+          </div>
+        </footer>
 
-      {/* FOOTER STATS INFO */}
-      <footer className="border-t border-[#1E293B] mt-12 py-6 bg-[#0E1524] text-xs font-mono text-center text-gray-500">
-        <div className="max-w-7xl mx-auto px-4">
-          <p className="uppercase tracking-widest text-[#10B981] font-bold mb-1">Robust Vision Security Layer</p>
-          <p>Operando em ambiente integrado iSIC Lite e CFTV para envio direcionado</p>
-          <p className="text-[10px] text-gray-600 mt-2">© 2026 Robust Vision Inc. Todos os Direitos Reservados.</p>
-        </div>
-      </footer>
+      </main>
 
       {/* Modern Non-Blocking App Alert Overlay */}
       {appAlert && appAlert.isOpen && (
