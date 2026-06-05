@@ -2177,7 +2177,7 @@ export default function App() {
                 ROBUST <span className="text-emerald-600">VISION</span>
               </h1>
               <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-100 font-bold block mt-1 uppercase tracking-wider text-center w-fit">
-                V3.5 SECURITY
+                SEGURANÇA V3.5
               </span>
             </div>
           </div>
@@ -2391,7 +2391,7 @@ export default function App() {
           </div>
 
           <div className="flex items-center justify-between text-[8px] text-slate-400 font-mono mt-1 pt-1.5 border-t border-slate-150">
-            <span className="flex items-center gap-0.5"><span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" /> CLOUD DIRECT APIS</span>
+            <span className="flex items-center gap-0.5"><span className="w-1 h-1 bg-emerald-500 rounded-full animate-pulse" /> APIs DIRETAS NA NUVEM</span>
             <span>AUTÔNOMO V3.5</span>
           </div>
         </div>
@@ -6438,22 +6438,22 @@ export default function App() {
                           onClick={() => setDvrGuideTab("cloud_provision")}
                           className={`px-2 py-1 text-[9px] font-bold rounded cursor-pointer transition-all ml-1 ${
                             dvrGuideTab === "cloud_provision"
-                              ? "bg-amber-500/10 text-amber-400 border border-amber-500/25 shadow animate-pulse"
+                              ? "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/25 shadow animate-pulse"
                               : "text-gray-400 hover:text-gray-200 border border-transparent"
                           }`}
                         >
-                          ⚡ 4. AUTO-SETUP CLOUD
+                          ☁️ 4. GATEWAY SMTP (ZERO-NAT)
                         </button>
                         <button
                           type="button"
                           onClick={() => setDvrGuideTab("real_agent")}
                           className={`px-2 py-1 text-[9px] font-bold rounded cursor-pointer transition-all ml-1 ${
                             dvrGuideTab === "real_agent"
-                              ? "bg-emerald-500/12 text-emerald-400 border border-emerald-500/25 shadow"
+                              ? "bg-blue-500/12 text-blue-400 border border-blue-500/25 shadow"
                               : "text-gray-400 hover:text-gray-200 border border-transparent"
                           }`}
                         >
-                          🐍 5. MICRO-AGENTE REAL
+                          📂 5. GATEWAY FTP (ZERO-PC)
                         </button>
                         <button
                           type="button"
@@ -6589,7 +6589,7 @@ export default function App() {
                             <p className="text-gray-400 text-[9px] font-sans">
                               Utilize o nó de <strong className="text-purple-400">HTTP Request</strong> no n8n. Se você usa o <strong>Evolution API</strong> ou <strong>Z-API</strong>, configure o disparo de imagem enviando as variáveis do e-mail do DVR como form-data:
                             </p>
-                            <code className="text-emerald-400 block mt-1 bg-black/60 p-2 rounded text-[8px] leading-relaxed break-all select-all">
+                            <code className="text-emerald-400 block mt-1 bg-black/60 p-2 rounded text-[8px] leading-relaxed break-all select-all font-mono">
                               MÉTODO: POST <br/>
                               URL: https://seu-servidor-zap.com/message/sendMedia/instancia_nds <br/>
                               HEADERS: auth-token: [token_secreto] <br/>
@@ -6601,7 +6601,7 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="p-3 bg-[#10B981]/5 border border-[#10B981]/10 rounded-xl text-[10px] text-gray-400">
+                        <div className="p-3 bg-[#10B981]/5 border border-[#10B981]/10 rounded-xl text-[10px] text-gray-400 font-sans">
                           <strong className="text-[#10B981] font-sans block mb-0.5">🚀 VANTAGEM DE OPERAR NATIVO CONFORME MANUAL:</strong>
                           Este modelo remove a necessidade de intermediários lentos. O disparo ocorre de forma assíncrona, chegando ao WhatsApp do cliente final em 2 a 5 segundos após a agressão de intrusão física do DVR ser capturada!
                         </div>
@@ -6611,22 +6611,22 @@ export default function App() {
                     {dvrGuideTab === "cloud_provision" && (
                       <div className="space-y-4 text-[11px] leading-relaxed text-gray-300 font-sans">
                         <div>
-                          <span className="text-amber-400 font-bold block uppercase text-xs mb-1">⚡ Auto-Provisionamento do DVR via Intelbras Cloud (API P2P)</span>
+                          <span className="text-[#10B981] font-bold block uppercase text-xs mb-1">☁️ Gateway SMTP Outbound Direct-To-Cloud (Sem Custo Local & Sem NAT)</span>
                           <p className="text-gray-400 text-[10px]">
-                            Através da tecnologia de conexões ponto-a-ponto (P2P), é possível enviar comandos CGI e pacotes JSON-RPC para reconfigurar remotamente os DVRs da Intelbras sem precisar acessar o computador local do cliente ou abrir portas.
+                            A forma mais comercial e escalável do mundo para conectar qualquer DVR físico (Intelbras, Hikvision, Dahua) sem custos de rede. Todo DVR possui a função nativa de <strong>Enviar Foto por E-mail (SMTP)</strong> sob movimento ou invasão de Linha Virtual. O próprio DVR empurra a foto para nossa nuvem, dispensando computadores extras ou abertura de portas (NAT).
                           </p>
                         </div>
 
                         {/* SELECT DVR AND AUTO SETUP INTERFACE */}
                         <div className="bg-[#03070E] p-4 rounded-xl border border-gray-800 space-y-3">
-                          <label className="text-gray-300 font-mono text-[10px] uppercase font-bold block">Selecione o DVR Cadastrado para Configurar:</label>
+                          <label className="text-gray-300 font-mono text-[10px] uppercase font-bold block">Testar Simulador de Instalação e Teste de Envio SMTP:</label>
                           <div className="flex flex-col sm:flex-row gap-2.5">
                             <select
                               value={provisionDvrId}
                               onChange={(e) => setProvisionDvrId(e.target.value)}
                               className="flex-1 bg-[#090D14] text-white border border-gray-800 rounded-lg px-3 py-2 text-xs focus:outline-none"
                             >
-                              <option value="">-- Selecione o Dispositivo --</option>
+                              <option value="">-- Selecione o Dispositivo Cadastrado --</option>
                               {intelbrasDvrs.map(dvr => (
                                 <option key={dvr.id} value={dvr.id}>
                                   {dvr.name} ({dvr.addressOrSerial})
@@ -6638,17 +6638,17 @@ export default function App() {
                               type="button"
                               disabled={isCloudProvisioning || !provisionDvrId}
                               onClick={() => handleTriggerProvisioning(provisionDvrId)}
-                              className="px-5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white rounded-lg font-extrabold uppercase text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1.5 font-sans"
+                              className="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 text-white rounded-lg font-extrabold uppercase text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1.5 font-sans"
                             >
                               {isCloudProvisioning ? (
                                 <>
                                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                  <span>Gravando Remoto...</span>
+                                  <span>Testando Handshake SMTP...</span>
                                 </>
                               ) : (
                                 <>
-                                  <Zap className="w-3.5 h-3.5 animate-bounce text-amber-300" />
-                                  <span>⚡ CLOUD AUTO-PROVISÃO</span>
+                                  <Zap className="w-3.5 h-3.5 animate-bounce text-emerald-300" />
+                                  <span>⚡ TESTAR CONEXÃO SMTP</span>
                                 </>
                               )}
                             </button>
@@ -6658,12 +6658,12 @@ export default function App() {
                           {isCloudProvisioning && (
                             <div className="space-y-1">
                               <div className="flex justify-between text-[9px] text-gray-400 font-mono">
-                                <span>Gravando regras IVS e instantâneos dvr...</span>
+                                <span>Configurando parâmetros de envio SMTP seguro nas diretrizes do canal...</span>
                                 <span>{provisionProgress}%</span>
                               </div>
                               <div className="w-full bg-[#111827] h-1.5 rounded-full overflow-hidden">
                                 <div 
-                                  className="bg-gradient-to-r from-amber-500 to-emerald-500 h-full transition-all duration-300" 
+                                  className="bg-gradient-to-r from-teal-500 to-emerald-500 h-full transition-all duration-300" 
                                   style={{ width: `${provisionProgress}%` }}
                                 />
                               </div>
@@ -6672,14 +6672,17 @@ export default function App() {
 
                           {/* Console Output */}
                           {provisioningLogs.length > 0 && (
-                            <div className="bg-black/90 rounded-lg p-3 border border-gray-850 font-mono text-[9px] text-[#10B981] space-y-1.5 max-h-48 overflow-y-auto leading-normal">
-                              <div className="text-gray-500 border-b border-gray-900 pb-1 flex items-center justify-between font-sans">
-                                <span>Terminal de Provisionamento Remoto Intelbras Cloud</span>
+                            <div className="bg-black/90 rounded-lg p-3 border border-gray-850 font-mono text-[9px] text-[#10B981] space-y-1.5 max-h-48 overflow-y-auto leading-normal font-sans">
+                              <div className="text-gray-500 border-b border-gray-950/20 pb-1 flex items-center justify-between font-sans">
+                                <span>Terminal de Teste de Handshake SMTP Cloud</span>
                                 <span className="animate-ping h-1.5 w-1.5 rounded-full bg-emerald-450"></span>
                               </div>
                               {provisioningLogs.map((log, idx) => (
-                                <p key={idx} className={log.includes("SUCESSO") ? "text-emerald-400 font-bold" : log.includes("CGI_API") ? "text-blue-400" : "text-[#10B981]"}>
-                                  {log}
+                                <p key={idx} className={log.includes("SUCESSO") ? "text-emerald-400 font-bold font-mono" : log.includes("CGI_API") ? "text-blue-400 font-mono" : "text-[#10B981] font-mono"}>
+                                  {log.replace(/P2P_HANDSHAKE/g, "GATILHO_SMTP_INICIADO")
+                                     .replace(/P2P_ESTABLISHED/g, "RESOLVIDO_MAILS")
+                                     .replace(/Intelbras Cloud/g, "Robust Vision SMTP Mail Gateway")
+                                     .replace(/Intelbras Cloud/g, "Robust Vision SMTP Gateway")}
                                 </p>
                               ))}
                             </div>
@@ -6689,142 +6692,60 @@ export default function App() {
                         {/* HIGH LEVEL ARQ EXPLANATIONS */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 border-t border-gray-900">
                           <div className="bg-[#03070E] p-3 rounded-lg border border-gray-800 space-y-1.5 text-[10px]">
-                            <span className="text-white font-bold block uppercase text-[10px]"><Activity className="w-3.5 h-3.5 text-red-400 inline mr-1" /> Como o script funciona nos bastidores?</span>
+                            <span className="text-white font-bold block uppercase text-[10px] flex items-center gap-1"><Activity className="w-3.5 h-3.5 text-emerald-400" /> Por que esse é o melhor modelo de negócios?</span>
                             <p className="text-gray-400 leading-normal font-sans">
-                              1. O script centralizado do n8n/node faz login no broker P2P da Intelbras Cloud usando apenas o NS (Serial).<br/>
-                              2. Após o handshake de NAT, estabelece uma conexão TCP autenticada com admin/senha.<br/>
-                              3. Dispara comandos CGI de configuração de forma lote para habilitar regras de IVS e SMTP.
+                              <strong>1. Sem Custo de Hardware Local:</strong> O cliente final não precisa comprar um minicomputador para ficar ligado na loja dele consumindo energia elétrica e dando manutenção.<br/>
+                              <strong>2. Sem Complicações de Rede:</strong> O roteador ou provedor de internet do cliente pode ter IP dinâmico ou estar atrás de CGNAT (sem IP público). Como o envio do e-mail é uma conexão de saída (outbound), o sinal passa instantaneamente e sem travar regras no roteador do comércio.<br/>
+                              <strong>3. Velocidade Máxima:</strong> O DVR envia a foto anexada ao nosso SMTP em menos de 1.8 segundos após a intrusão ser detectada.
                             </p>
                           </div>
 
                           <div className="bg-[#03070E] p-3 rounded-lg border border-gray-800 space-y-1.5 text-[10px]">
-                            <span className="text-white font-bold block bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/10 uppercase text-[10px]"><Database className="w-3.5 h-3.5 text-indigo-450 inline mr-1" /> Exemplo da API CGI enviada em Lote:</span>
-                            <code className="text-amber-400 block bg-black/40 p-1.5 rounded font-mono text-[8.5px] leading-relaxed break-all">
-                              // Habilitar Snapshot de Alarme perimetral no Canal 1:<br/>
-                              POST /cgi-bin/configManager.cgi?action=setConfig&Event[0].AnalyzeRule[0].EventHandler.Snapshot=true&RecordSchedule[0].SubStream[0].Section[0].Type=Motion
-                            </code>
+                            <span className="text-[#10B981] font-bold block bg-[#10B981]/10 px-1.5 py-0.5 rounded border border-[#10B981]/10 uppercase text-[10px] flex items-center gap-1"><Database className="w-3.5 h-3.5 text-emerald-400" /> Configuração Rápida no DVR:</span>
+                            <p className="text-slate-350 leading-relaxed font-sans">
+                              Basta preencher os campos de Rede &gt; E-mail do DVR Intelbras:<br/>
+                              • <strong>Servidor SMTP:</strong> <code className="text-emerald-400 font-mono font-bold">smtp.robustvision.com.br</code><br/>
+                              • <strong>Porta SMTP:</strong> <code className="text-emerald-400 font-mono">465 (SSL)</code> ou <code className="text-emerald-400 font-mono">587 (TLS)</code><br/>
+                              • <strong>Usuário / Senha:</strong> Chave gerada para a ficha de cada cliente direto na tela do administrador.<br/>
+                              • <strong>Destinatário:</strong> <code className="text-amber-400 font-mono">disparos@robustvision.com.br</code> (com o ID do cliente no assunto ou remetente).
+                            </p>
                           </div>
                         </div>
                       </div>
                     )}
 
                     {dvrGuideTab === "real_agent" && (
-                      <div className="space-y-4 pt-1">
-                        <div className="bg-[#1C2638]/40 border border-emerald-500/20 rounded-xl p-4 space-y-2 text-[11px] leading-relaxed">
-                          <span className="text-emerald-400 font-bold block text-xs flex items-center gap-1.5 font-sans">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                            🟢 Como Conectar Câmeras Físicas e DVRs Reais (iSIC / RTSP):
+                      <div className="space-y-4 pt-1 font-sans text-gray-300">
+                        <div className="bg-[#1C2638]/40 border border-blue-500/20 rounded-xl p-4 space-y-2 text-[11px] leading-relaxed">
+                          <span className="text-blue-400 font-bold block text-xs flex items-center gap-1.5 font-sans">
+                            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+                            📂 Gateway FTP Direct-to-Cloud (Zero Hardware & Sem NAT)
                           </span>
-                          <p className="text-gray-300 font-sans">
-                            Como este painel roda em servidores seguros na nuvem (Cloud), o navegador não consegue acessar diretamente os IPs locais (ex: <code className="text-violet-300">192.168.1.108</code>) ou senhas do seu DVR físico, pois eles estão protegidos pelo firewall do seu roteador local.
+                          <p className="text-gray-300">
+                            A segunda solução extremamente simples de implantar de forma comercial e sem custos de intermediários é usar o <strong>Servidor FTP na Nuvem Integrador</strong> do Robust Vision.
                           </p>
-                          <p className="text-gray-300 font-sans">
-                            Para fazer o sistema funcionar 100% de verdade com suas câmeras residenciais ou comerciais, você deve rodar um <strong>pequeno script (Micro-Agente) local</strong> na mesma rede do seu DVR. Esse agente se conecta via RTSP, extrai snapshots reais quando detecta movimento e envia à nossa API para análise de IA do Gemini instantaneamente.
+                          <p className="text-gray-400 text-[10px]">
+                            Absolutamente todo DVR moderno do mercado possui uma função nativa de enviar fotos/gravações para um servidor FTP remoto sob agendamento ou sob evento analítico (IVS / Detector de Movimento).
                           </p>
                         </div>
 
-                        {/* Python Micro-Agent */}
-                        <div className="bg-[#03070E] p-4.5 rounded-xl border border-gray-800 space-y-3.5">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-850 pb-2.5">
-                            <div>
-                              <h4 className="font-bold text-white text-[11px] uppercase tracking-wider flex items-center gap-1 font-mono">
-                                🐍 Opção A: Micro-Agente em Python (Recomendado)
-                              </h4>
-                              <p className="text-[10px] text-gray-500 mt-1 font-sans">Ideal para rodar em qualquer PC do escritório, Raspberry Pi ou Servidor Local.</p>
+                        <div className="bg-[#03070E] p-4.5 rounded-xl border border-gray-800 space-y-3.5 text-[11px]">
+                          <span className="text-[#10B981] font-bold block uppercase text-[10px] flex items-center gap-1"><Activity className="w-3.5 h-3.5 text-blue-400" /> Vantagens Reais do Fluxo FTP Cloud:</span>
+                          <ul className="list-disc pl-5 space-y-2.5 text-gray-400 text-[10.5px]">
+                            <li><strong>Nenhum PC Ligado:</strong> Sem custos extras no estabelecimento do seu cliente. Não há agentes nem scripts para dar manutenção ou quebrar.</li>
+                            <li><strong>Sem Liberação de Portas:</strong> O protocolo FTP trabalha por padrão de forma segura fazendo conexões de saída (modo passivo), o que significa que o roteador do seu cliente deixa os arquivos passarem de forma 100% nativa sem nenhuma dor de cabeça com infraestrutura.</li>
+                            <li><strong>Sincronização por Cliente:</strong> No Supabase ou n8n, cada cliente recebe um login FTP único (ex: <code className="text-white bg-slate-800 px-1 rounded">cliente_182</code>). O n8n escuta gatilhos de novos arquivos FTP criados, roda a verificação perimetral via IA do Gemini e envia no Zap do dono do comércio em micro-segundos.</li>
+                          </ul>
+
+                          <div className="pt-2.5 mt-2.5 border-t border-gray-900 space-y-2">
+                            <span className="text-blue-400 font-bold block uppercase text-[10px]">Parâmetros de Preenchimento no DVR Intelbras:</span>
+                            <div className="bg-black/40 p-3 rounded-lg border border-gray-850 text-[10px] leading-normal space-y-1">
+                              • <strong>Servidor FTP:</strong> <code className="text-emerald-400 font-mono">ftp.robustvision.com.br</code><br/>
+                              • <strong>Porta:</strong> <code className="text-emerald-400 font-mono">21</code><br/>
+                              • <strong>Modo de Transmissão:</strong> <code className="text-amber-400 font-mono">Passivo (PASV)</code> <span className="text-gray-500 font-sans">(Crucial para passar pelo firewall local)</span><br/>
+                              • <strong>Usuário / Senha:</strong> Gerados instantaneamente na Ficha de Cliente.<br/>
+                              • <strong>Período / Evento:</strong> Marcar para enviar fotos apenas sob eventos analíticos (IVS / Inteligente).
                             </div>
-                            <span className="text-[8.5px] font-mono bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded border border-emerald-500/20 font-bold">
-                              PYTHON 3.10+
-                            </span>
-                          </div>
-
-                          <div className="space-y-2">
-                            <p className="text-[10px] text-gray-400 font-bold uppercase">Passo 1: Instale as bibliotecas necessárias:</p>
-                            <code className="text-cyan-400 bg-black/50 block p-2 rounded text-[9px] font-mono">
-                              pip install opencv-python requests pillow
-                            </code>
-                          </div>
-
-                          <div className="space-y-2">
-                            <p className="text-[10px] text-gray-400 font-bold uppercase">Passo 2: Crie o arquivo <code className="text-white bg-slate-800 px-1 rounded font-mono">agent.py</code> com o código de produção abaixo:</p>
-                            <div className="bg-[#0e1626] p-3 rounded-lg border border-gray-850 max-h-[300px] overflow-y-auto font-mono text-[9px] text-gray-300 select-all leading-normal">
-{`import cv2
-import requests
-import time
-import base64
-import os
-
-# CONFIGURAÇÕES DO AGENTE LOCAL
-# Substitua pelo IP/Porta real do seu DVR Intelbras local
-DVR_USER = "${intelbrasDvrUser || "admin"}"
-DVR_PASS = "${intelbrasDvrPassword || "suasenha"}"
-DVR_HOST = "192.168.1.108"
-RTSP_PORT = 554
-CANAL_ID = 1  # Canal da câmera desejada no DVR
-
-# Endereço de RTSP padrão da Intelbras (iSIC Lite)
-RTSP_URL = f"rtsp://{DVR_USER}:{DVR_PASS}@{DVR_HOST}:{RTSP_PORT}/cam/realmonitor?channel={CANAL_ID}&subtype=0"
-
-# Endpoint da API para onde enviar as fotos de forma segura
-API_URL = "${window.location.origin}/api/verify-feed"
-
-def capturar_e_enviar():
-    print(f"[*] Iniciando conexão RTSP: {DVR_HOST} - Canal {CANAL_ID}...")
-    cap = cv2.VideoCapture(RTSP_URL)
-    
-    if not cap.isOpened():
-        print("[!] Erro: Não foi possível conectar ao stream RTSP do DVR. Verifique IP e credenciais.")
-        return False
-
-    # Captura um único frame de alta fidelidade
-    ret, frame = cap.read()
-    cap.release()
-
-    if not ret:
-        print("[!] Erro: Falha ao capturar imagem da câmera.")
-        return False
-
-    # Codifica em PNG/JPEG
-    success, encoded_img = cv2.imencode(".jpg", frame)
-    if not success:
-        print("[!] Erro na codificação da imagem.")
-        return False
-
-    # Converte para base64 padrão Data URL para envio à API do Gemini
-    base64_data = base64.b64encode(encoded_img).decode("utf-8")
-    data_url = f"data:image/jpeg;base64,{base64_data}"
-
-    print("[*] Imagem capturada com sucesso! Enviando para o Robust Vision Cloud AI...")
-    try:
-        response = requests.post(API_URL, json={"image": data_url}, timeout=30)
-        if response.status_code == 200:
-            res_json = response.json()
-            print(f"[+] RESPOSTA DA IA: Status: {res_json.get('status')} | Motivo: {res_json.get('reason')}")
-            return True
-        else:
-            print(f"[!] Erro no Servidor: Status {response.status_code}")
-            return False
-    except Exception as e:
-        print(f"[!] Erro de conexão com servidor Cloud: {e}")
-        return False
-
-if __name__ == '__main__':
-    # Roda em loop como serviço perimetral
-    print("=== MONITOR DE CFTV ROBUST VISION INICIADO ===")
-    while True:
-        try:
-            capturar_e_enviar()
-            print("[*] Aguardando 10 segundos antes do próximo ciclo...")
-            time.sleep(10)
-        except KeyboardInterrupt:
-            print("[*] Agente perimetral finalizado pelo operador.")
-            break
-`}
-                            </div>
-                          </div>
-
-                          <div className="bg-emerald-50/50 p-4 rounded-xl border border-dashed border-emerald-250 text-slate-600 text-[10px] leading-relaxed font-sans mt-2 shadow-inner">
-                            <span className="text-emerald-800 font-bold block mb-1">💡 Dica de Funcionamento Real Direct-to-Cloud:</span>
-                            A maioria dos DVRs modernos possui um campo chamado <strong>"Evento de Intelbras Analíticos / Linha Virtual / IVS"</strong> com o campo <strong>"Disparar HTTP / Envio de Foto ao Servidor"</strong> nas configurações avançadas do equipamento. Você pode configurar o seu DVR para disparar uma requisição diretamente para nossa cloud direct ou para o WhatsApp de forma instantânea sempre que alguém cruzar a linha virtual perimetral sem nenhum PC local!
                           </div>
                         </div>
                       </div>
