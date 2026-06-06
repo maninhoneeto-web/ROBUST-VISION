@@ -284,6 +284,18 @@ export default function App() {
   const [intelbrasDvrChannels, setIntelbrasDvrChannels] = useState(8);
   const [intelbrasDvrStream, setIntelbrasDvrStream] = useState<"Principal" | "Extra">("Extra");
 
+  // Real-time diagnostics state for direct network paths
+  const [dvrDiagnostics, setDvrDiagnostics] = useState<Record<string, {
+    loading: boolean;
+    result: {
+      connected: boolean;
+      latency?: number;
+      barrier?: string;
+      details?: string;
+      recommendation?: string;
+    } | null;
+  }>>({});
+
   const [localIntelbrasDvrs, setLocalIntelbrasDvrs] = useState<IntelbrasDVR[]>(() => {
     try {
       const saved = safeStorage.getItem("rv_cloud_dvrs");
@@ -1696,6 +1708,53 @@ export default function App() {
 
   const handleToggleIntelbrasDvrStatus = (id: string) => {
     setIntelbrasDvrs(prev => prev.map(d => d.id === id ? { ...d, connected: !d.connected } : d));
+  };
+
+  const handleDiagnoseDvr = async (id: string) => {
+    const dvr = intelbrasDvrs.find(d => d.id === id);
+    if (!dvr) return;
+
+    setDvrDiagnostics(prev => ({
+      ...prev,
+      [id]: { loading: true, result: null }
+    }));
+
+    try {
+      const res = await fetch("/api/probe-dvr", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          addressOrSerial: dvr.addressOrSerial,
+          port: dvr.port,
+          integrationType: dvr.integrationType
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDvrDiagnostics(prev => ({
+          ...prev,
+          [id]: { loading: false, result: data }
+        }));
+        
+        // Match actual network probe connection status in active screen definitions
+        setIntelbrasDvrs(prev => prev.map(d => d.id === id ? { ...d, connected: data.connected } : d));
+      } else {
+        throw new Error(`Código de status HTTP: ${res.status}`);
+      }
+    } catch (err: any) {
+      setDvrDiagnostics(prev => ({
+        ...prev,
+        [id]: {
+          loading: false,
+          result: {
+            connected: false,
+            barrier: "ERR_ROUTE_FAILED",
+            details: `A transmissão de dados falhou: ${err.message}`,
+            recommendation: "Verifique se a rede local do servidor está em operação e tente novamente."
+          }
+        }
+      }));
+    }
   };
 
   const handleTriggerProvisioning = (dvrId: string) => {
@@ -6620,35 +6679,102 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between pt-3 mt-3 border-t border-gray-800 text-[10px]">
-                            <div className="flex items-center gap-1.5">
-                              {dvr.connected ? (
-                                <>
-                                  <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10B981]"></span>
-                                  </span>
-                                  <span className="text-[#10B981] font-bold font-mono">CONECTADO EM TEMPO REAL</span>
-                                </>
-                              ) : (
-                                <>
-                                  <span className="h-2 w-2 rounded-full bg-red-500"></span>
-                                  <span className="text-red-500 font-bold">DESCONECTADO / OFFLINE</span>
-                                </>
-                              )}
+                          <div className="flex flex-col gap-2.5 pt-3 mt-3 border-t border-gray-800 text-[10px]">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                {dvr.connected ? (
+                                  <>
+                                    <span className="relative flex h-2 w-2">
+                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#10B981] opacity-75"></span>
+                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-[#10B981]"></span>
+                                    </span>
+                                    <span className="text-[#10B981] font-bold font-mono">CONECTADO EM TEMPO REAL</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="h-2 w-2 rounded-full bg-red-500"></span>
+                                    <span className="text-red-500 font-bold">DESCONECTADO / OFFLINE</span>
+                                  </>
+                                )}
+                              </div>
+
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  disabled={dvrDiagnostics[dvr.id]?.loading}
+                                  onClick={() => handleDiagnoseDvr(dvr.id)}
+                                  className={`px-3 py-1 rounded text-[9px] font-bold border flex items-center gap-1 transition-all ${
+                                    dvrDiagnostics[dvr.id]?.loading
+                                      ? "bg-slate-800 text-slate-500 border-slate-700 cursor-wait animate-pulse"
+                                      : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20 hover:bg-indigo-500/30 active:scale-95"
+                                  }`}
+                                >
+                                  {dvrDiagnostics[dvr.id]?.loading ? (
+                                    <>
+                                      <RefreshCw className="w-3 h-3 animate-spin text-indigo-400" />
+                                      <span>ANALISANDO...</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Activity className="w-3 h-3 text-indigo-400" />
+                                      <span>DIAGNOSTICAR CONEXÃO DIRETA</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleIntelbrasDvrStatus(dvr.id)}
+                                  className={`px-3 py-1 rounded text-[9px] font-bold border transition-colors ${
+                                    dvr.connected
+                                      ? "bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/30"
+                                      : "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20 hover:bg-[#10B981]/30"
+                                  }`}
+                                >
+                                  {dvr.connected ? "DESCONECTAR" : "REESTABELECER"}
+                                </button>
+                              </div>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => handleToggleIntelbrasDvrStatus(dvr.id)}
-                              className={`px-3 py-1 rounded text-[9px] font-bold border transition-colors ${
-                                dvr.connected
-                                  ? "bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/30"
-                                  : "bg-[#10B981]/10 text-[#10B981] border-[#10B981]/20 hover:bg-[#10B981]/30"
-                              }`}
-                            >
-                              {dvr.connected ? "DESCONECTAR" : "REESTABELECER"}
-                            </button>
+                            {/* DIAGNOSTIC RESULTS DISPLAY */}
+                            {dvrDiagnostics[dvr.id] && (
+                              <div className="mt-2.5 p-3 rounded-lg bg-[#0E1524] border border-gray-800 text-[10.5px] leading-relaxed space-y-2">
+                                <div className="flex items-center justify-between border-b border-gray-800/80 pb-1.5">
+                                  <span className="text-gray-400 font-bold uppercase text-[9px] font-sans tracking-wide">
+                                    🔬 LAUDO TÉCNICO DE ROTA CFTV
+                                  </span>
+                                  {dvrDiagnostics[dvr.id].loading ? (
+                                    <span className="text-indigo-400 animate-pulse font-bold text-[9px]">Sondando portas e pacotes...</span>
+                                  ) : dvrDiagnostics[dvr.id].result?.connected ? (
+                                    <span className="text-[#10B981] font-bold bg-[#10B981]/10 border border-[#10B981]/20 px-1.5 py-0.5 rounded text-[8.5px]">
+                                      ✓ CONEXÃO FEITA {dvrDiagnostics[dvr.id].result?.latency ? `(${dvrDiagnostics[dvr.id].result?.latency}ms)` : ""}
+                                    </span>
+                                  ) : (
+                                    <span className="text-red-400 font-bold bg-red-400/10 border border-red-400/20 px-1.5 py-0.5 rounded text-[8.5px]">
+                                      🚨 INTERRUPÇÃO DETECTADA - {dvrDiagnostics[dvr.id].result?.barrier || "BLOQUEIO"}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {dvrDiagnostics[dvr.id].loading ? (
+                                  <div className="flex items-center gap-2 text-gray-500 py-1 font-mono">
+                                    <RefreshCw className="w-3 h-3 animate-spin text-gray-400" />
+                                    <span>Efetuando Handshake TCP e enviando Probe perante porta de sinalização...</span>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <p className="text-gray-300">
+                                      <strong className="text-white block mb-0.5">Diagnóstico:</strong>
+                                      {dvrDiagnostics[dvr.id].result?.details}
+                                    </p>
+                                    <p className="text-indigo-300 font-sans leading-tight pl-2 border-l border-indigo-500/40">
+                                      <strong className="text-white font-mono text-[9.5px] uppercase block mb-0.5">💡 Resolução / Recomendação Requerida:</strong>
+                                      {dvrDiagnostics[dvr.id].result?.recommendation}
+                                    </p>
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}

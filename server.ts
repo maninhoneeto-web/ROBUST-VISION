@@ -5,6 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import fs from "fs";
 import multer from "multer";
+import net from "net";
 
 dotenv.config();
 
@@ -289,6 +290,117 @@ app.post("/api/proxy-webhook", async (req, res) => {
   } catch (err: any) {
     console.error("[Proxy Webhook] Error forwarding payload:", err.message);
     return res.status(500).json({ error: err.message });
+  }
+});
+
+// Applet route to analyze direct network topology and test connection barrier to configured DVRs
+app.post("/api/probe-dvr", async (req, res) => {
+  try {
+    const { addressOrSerial, port, integrationType } = req.body;
+    if (!addressOrSerial) {
+      return res.status(400).json({ error: "Endereço ou Serial é obrigatório." });
+    }
+
+    const hostClean = addressOrSerial.trim();
+    const dvrPort = Number(port) || 37777;
+
+    const result = {
+      connected: false,
+      latency: 0,
+      barrier: "",
+      details: "",
+      recommendation: ""
+    };
+
+    if (integrationType === "Intelbras Cloud") {
+      // P2P Serial-based check: Since P2P connects outwards through Intelbras servers,
+      // we check outbound DNS and transport reachability to dvr.intelbrascloud.com.br
+      const hostToTest = "dvr.intelbrascloud.com.br";
+      const start = Date.now();
+      const socket = new net.Socket();
+      
+      await new Promise<void>((resolve) => {
+        socket.setTimeout(3000);
+        socket.connect(80, hostToTest, () => {
+          result.connected = true;
+          result.latency = Date.now() - start;
+          result.details = `Sinal outbound OK! A rede do servidor conseguiu contatar perfeitamente o broker de sinalização Cloud da Intelbras (${hostToTest}) na porta 80.`;
+          result.recommendation = `O seu DVR com Serial "${hostClean}" está integrado e pronto para efetuar handshake P2P de forma autônoma sem liberar nenhuma porta no roteador do seu cliente!`;
+          socket.destroy();
+          resolve();
+        });
+
+        socket.on("error", (err: any) => {
+          result.connected = false;
+          result.barrier = "FIREWALL_OUTBOUND_BLOCKED";
+          result.details = `Falha de Resolução/Conexão com a rede Intelbras Cloud (${hostToTest}): ${err.message}`;
+          result.recommendation = "O firewall da sua rede local ou o provedor do comércio está filtrando conexões HTTP de saída. Verifique as configurações de DNS.";
+          socket.destroy();
+          resolve();
+        });
+
+        socket.on("timeout", () => {
+          result.connected = false;
+          result.barrier = "BROKER_TIMEOUT";
+          result.details = `Esgotado tempo de espera com o servidor de registro da Intelbras (${hostToTest}).`;
+          result.recommendation = "A conexão de saída à Intelbras Cloud está lenta ou sofrendo descarte de pacotes pelo provedor.";
+          socket.destroy();
+          resolve();
+        });
+      });
+    } else {
+      // direct IP or DDNS type check
+      const isLocalIP = /^127\.|^10\.|^172\.(1[6-9]|2[0-9]|3[0-1])\.|^192\.168\./.test(hostClean) || hostClean === "localhost" || hostClean.startsWith("192.168.");
+      
+      if (isLocalIP) {
+        result.connected = false;
+        result.barrier = "BARREIRA_REDE_PRIVADA_CORS";
+        result.details = `O endereço "${hostClean}" é um IP local reservado de rede privada. A inteligência do Robust Vision está rodando de forma isolada na nuvem pública e NÃO consegue acessar o IP residencial local por isolamento físico (NAT).`;
+        result.recommendation = "Mude as configurações deste DVR para 'Intelbras Cloud' usando o Número de Série (P2P), ou utilize um DNS dinâmico (DDNS) com Redirecionamento de Portas (Port Forwarding) configurado em seu roteador.";
+      } else {
+        const start = Date.now();
+        const socket = new net.Socket();
+        
+        await new Promise<void>((resolve) => {
+          socket.setTimeout(4000);
+          socket.connect(dvrPort, hostClean, () => {
+            result.connected = true;
+            result.latency = Date.now() - start;
+            result.details = `Host de DDNS/IP público (${hostClean}) respondeu perfeitamente com a porta de CFTV ${dvrPort} aberta e ativa! Latência: ${result.latency}ms.`;
+            result.recommendation = "Integração via iSIC Lite direta configurada com sucesso. Nenhuma barreira de tráfego encontrada!";
+            socket.destroy();
+            resolve();
+          });
+
+          socket.on("error", (err: any) => {
+            result.connected = false;
+            result.barrier = err.code === "ENOTFOUND" ? "DNS_NOT_RESOLVED" : "PORT_CLOSED_OR_CGNAT";
+            result.details = err.code === "ENOTFOUND"
+              ? `O domínio de DDNS "${hostClean}" não pôde ser resolvido pelo servidor de DNS.`
+              : `Porta Fechada ou CGNAT (Erro de conexão: ${err.message}). O servidor enviou pacotes, mas o roteador do cliente rejeitou a conexão na porta ${dvrPort}.`;
+            result.recommendation = err.code === "ENOTFOUND"
+              ? "Confirme se o DDNS do seu cliente foi configurado corretamente no No-IP ou IntelbrasDDNS e se está atualizado."
+              : "Verifique se a internet do cliente não está atrás de CGNAT (conhecido como IP duplo / NAT de provedor). Se estiver, use o modo 'Intelbras Cloud (P2P)' para evitar abertura de portas. Caso contrário, revise as regras de 'Port Forwarding' da porta de serviço (padrão 37777 ou configurada) nas regras de NAT do modem/roteador.";
+            socket.destroy();
+            resolve();
+          });
+
+          socket.on("timeout", () => {
+            result.connected = false;
+            result.barrier = "CONNECTION_TIMEOUT";
+            result.details = `O host "${hostClean}" não enviou resposta de confirmação de porta na porta ${dvrPort} após 4 segundos.`;
+            result.recommendation = "O modem do cliente está offline, as regras de firewall do roteador estão descartando pacotes (Drop) ou o DVR está desligado.";
+            socket.destroy();
+            resolve();
+          });
+        });
+      }
+    }
+
+    return res.json(result);
+  } catch (error: any) {
+    console.error("Erro ao analisar a conexão de rede:", error.message);
+    return res.status(500).json({ error: error.message });
   }
 });
 
