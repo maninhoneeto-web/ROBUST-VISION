@@ -223,6 +223,110 @@ app.post("/api/send-whatsapp", async (req, res) => {
 
       responseStatus = resWeb.status;
       responseData = await resWeb.json().catch(() => ({}));
+    } else if (type === "twilio") {
+      const accountSid = instance;
+      const authToken = token;
+      if (!accountSid || !authToken) {
+        throw new Error("Twilio Account SID (ID Instância) e Auth Token (Token) são obrigatórios.");
+      }
+
+      let twilioTo = to;
+      if (!twilioTo.startsWith("whatsapp:")) {
+        const cleanTo = twilioTo.replace(/\D/g, "");
+        twilioTo = `whatsapp:+${cleanTo}`;
+      }
+
+      let twilioFrom = url || "whatsapp:+14155238886";
+      if (!twilioFrom.startsWith("whatsapp:")) {
+        const cleanFrom = twilioFrom.replace(/\D/g, "");
+        twilioFrom = `whatsapp:+${cleanFrom}`;
+      }
+
+      const targetUrl = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+      const urlencoded = new URLSearchParams();
+      urlencoded.append("To", twilioTo);
+      urlencoded.append("From", twilioFrom);
+      urlencoded.append("Body", message);
+
+      let twilioMediaUrl = "";
+      if (imageUrl && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
+        twilioMediaUrl = imageUrl;
+      } else if (imageUrl && imageUrl.includes("/api/uploads/")) {
+        const host = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+        const cleanHost = host.endsWith("/") ? host.slice(0, -1) : host;
+        const filename = imageUrl.split("/api/uploads/")[1];
+        twilioMediaUrl = `${cleanHost}/api/uploads/${filename}`;
+      }
+
+      if (twilioMediaUrl) {
+        urlencoded.append("MediaUrl", twilioMediaUrl);
+      }
+
+      const basicAuth = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+
+      console.log(`Sending to Twilio API (${targetUrl}) to ${twilioTo} from ${twilioFrom}`);
+      const resTwilio = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": `Basic ${basicAuth}`
+        },
+        body: urlencoded.toString()
+      });
+
+      responseStatus = resTwilio.status;
+      responseData = await resTwilio.json().catch(() => ({}));
+    } else if (type === "meta") {
+      const phoneId = instance;
+      const metaToken = token;
+      if (!phoneId || !metaToken) {
+        throw new Error("WhatsApp Meta Phone Number ID (ID Instância) e Permanent Token (Token) são obrigatórios.");
+      }
+
+      const cleanTo = to.replace(/\D/g, "");
+      const targetUrl = `https://graph.facebook.com/v20.0/${phoneId}/messages`;
+
+      let metaMediaUrl = "";
+      if (imageUrl && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
+        metaMediaUrl = imageUrl;
+      } else if (imageUrl && imageUrl.includes("/api/uploads/")) {
+        const host = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+        const cleanHost = host.endsWith("/") ? host.slice(0, -1) : host;
+        const filename = imageUrl.split("/api/uploads/")[1];
+        metaMediaUrl = `${cleanHost}/api/uploads/${filename}`;
+      }
+
+      let metaPayload: any = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: cleanTo
+      };
+
+      if (metaMediaUrl) {
+        metaPayload.type = "image";
+        metaPayload.image = {
+          link: metaMediaUrl,
+          caption: message
+        };
+      } else {
+        metaPayload.type = "text";
+        metaPayload.text = {
+          body: message
+        };
+      }
+
+      console.log(`Sending to Meta WhatsApp Cloud API (${targetUrl}) to ${cleanTo}`);
+      const resMeta = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${metaToken}`
+        },
+        body: JSON.stringify(metaPayload)
+      });
+
+      responseStatus = resMeta.status;
+      responseData = await resMeta.json().catch(() => ({}));
     }
 
     return res.json({

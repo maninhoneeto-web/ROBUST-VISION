@@ -4061,6 +4061,8 @@ export default function App() {
                     <option value="disabled">Simulação Painel (Fila Virtual)</option>
                     <option value="zapi">Z-API (Oficial / Paralelo)</option>
                     <option value="evolution">Evolution API (API Node.js)</option>
+                    <option value="twilio">Twilio WhatsApp API</option>
+                    <option value="meta">WhatsApp Cloud API (Meta Oficial/Graph)</option>
                     <option value="custom_webhook">Webhook Customizado (POST)</option>
                   </select>
                 </div>
@@ -4068,10 +4070,25 @@ export default function App() {
                 {integrationConfig.whatsappApiType && integrationConfig.whatsappApiType !== "disabled" && (
                   <div className="space-y-2 animate-fadeIn">
                     <div className="space-y-1">
-                      <label className="text-[10px] text-gray-400 uppercase">URL / Base API Endpoint</label>
+                      <label className="text-[10px] text-gray-400 uppercase">
+                        {integrationConfig.whatsappApiType === "twilio" 
+                          ? "Número de Envio Twilio (whatsapp:+1...)" 
+                          : integrationConfig.whatsappApiType === "meta"
+                          ? "ID de Negócio WABA (Opcional)"
+                          : "URL / Base API Endpoint"
+                        }
+                      </label>
                       <input 
                         type="text" 
-                        placeholder={integrationConfig.whatsappApiType === "zapi" ? "https://api.z-api.io" : "https://api.suadominio.com"}
+                        placeholder={
+                          integrationConfig.whatsappApiType === "zapi" 
+                            ? "https://api.z-api.io" 
+                            : integrationConfig.whatsappApiType === "twilio"
+                            ? "Ex: whatsapp:+14155238886"
+                            : integrationConfig.whatsappApiType === "meta"
+                            ? "Ex: ID WABA (Opcional)"
+                            : "https://api.suadominio.com"
+                        }
                         value={integrationConfig.whatsappApiUrl || ""}
                         onChange={(e) => setIntegrationConfig(prev => ({ ...prev, whatsappApiUrl: e.target.value }))}
                         className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#10B981] text-xs placeholder-gray-600"
@@ -4079,9 +4096,21 @@ export default function App() {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[10px] text-gray-400 uppercase">Token de Autorização / apiKey</label>
+                      <label className="text-[10px] text-gray-400 uppercase">
+                        {integrationConfig.whatsappApiType === "twilio"
+                          ? "Twilio Auth Token"
+                          : integrationConfig.whatsappApiType === "meta"
+                          ? "Meta Permanent Access Token"
+                          : "Token de Autorização / apiKey"
+                        }
+                      </label>
                       <input 
                         type="password" 
+                        placeholder={
+                          integrationConfig.whatsappApiType === "meta"
+                            ? "EAAB..."
+                            : "Inserir token de segurança"
+                        }
                         value={integrationConfig.whatsappApiToken || ""}
                         onChange={(e) => setIntegrationConfig(prev => ({ ...prev, whatsappApiToken: e.target.value }))}
                         className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#10B981] text-xs"
@@ -4090,10 +4119,23 @@ export default function App() {
 
                     {integrationConfig.whatsappApiType !== "custom_webhook" && (
                       <div className="space-y-1">
-                        <label className="text-[10px] text-gray-400 uppercase">ID da Instância (Instance ID)</label>
+                        <label className="text-[10px] text-gray-400 uppercase">
+                          {integrationConfig.whatsappApiType === "twilio"
+                            ? "Twilio Account SID (AC...)"
+                            : integrationConfig.whatsappApiType === "meta"
+                            ? "WhatsApp Phone Number ID"
+                            : "ID da Instância (Instance ID)"
+                          }
+                        </label>
                         <input 
                           type="text" 
-                          placeholder="Ex: minha_instancia_nds"
+                          placeholder={
+                            integrationConfig.whatsappApiType === "twilio"
+                              ? "Ex: ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                              : integrationConfig.whatsappApiType === "meta"
+                              ? "Ex: 105829148293810"
+                              : "Ex: minha_instancia_nds"
+                          }
                           value={integrationConfig.whatsappApiInstance || ""}
                           onChange={(e) => setIntegrationConfig(prev => ({ ...prev, whatsappApiInstance: e.target.value }))}
                           className="w-full bg-[#090D14] text-white border border-gray-800 rounded px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#10B981] text-xs placeholder-gray-600"
