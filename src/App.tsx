@@ -510,6 +510,81 @@ export default function App() {
     deleteIntelbrasDvr
   } = useFirebase();
 
+  // Polling for incoming universal DVR webhook events (real-time hardware synchronization)
+  useEffect(() => {
+    let active = true;
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch("/api/webhook-events");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (active && data.success && data.events && data.events.length > 0) {
+          data.events.forEach((event: any) => {
+            console.log("Captured real-time DVR/Camera push webhook event:", event);
+            
+            // Format to VerificationLog type
+            const newLog: VerificationLog = {
+              id: event.id,
+              cameraName: event.cameraName,
+              timestamp: event.timestamp || new Date().toISOString(),
+              imageUrl: event.imageUrl,
+              status: event.status as "ALERTA" | "OK",
+              reason: event.reason,
+              operator: event.operator,
+              sentToWhatsApp: event.sentToWhatsApp
+            };
+
+            // Save to database (calls saveLog which saves automatically to Firestore if active or localStorage if not)
+            if (isFirebaseActive) {
+              saveLog(newLog);
+            } else {
+              setLocalLogs(prev => [newLog, ...prev]);
+            }
+
+            // Also, send active system visual alerts and play high-intensity security notify sound!
+            if (event.status === "ALERTA") {
+              showAppAlert(
+                `Ameaça detectada em ${event.tradingName} - ${event.cameraName}: ${event.reason}`,
+                "🚨 ALERTA GERAL DE SEGURANÇA",
+                "warn"
+              );
+              // Play secure buzzer sound safely using dynamic synthesiser
+              try {
+                const audContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+                if (audContext) {
+                  const osc = audContext.createOscillator();
+                  const gain = audContext.createGain();
+                  osc.type = "sawtooth";
+                  osc.frequency.setValueAtTime(880, audContext.currentTime); // Alert frequency
+                  gain.gain.setValueAtTime(0.3, audContext.currentTime);
+                  osc.connect(gain);
+                  gain.connect(audContext.destination);
+                  osc.start();
+                  osc.stop(audContext.currentTime + 1.2); // play buzzer for 1.2s
+                }
+              } catch (soundErr) {
+                console.warn("Autoplay restriction blocked audio buzzer signal:", soundErr);
+              }
+            } else {
+              showAppAlert(
+                `Atividade sem ameaças filtrada em ${event.tradingName} - ${event.cameraName}.`,
+                "✓ Monitoramento Ativo (OK)",
+                "success"
+              );
+            }
+          });
+        }
+      } catch (err) {
+        console.error("Error polling DVR webhook events:", err);
+      }
+    }, 4000);
+
+    return () => {
+      active = false;
+      clearInterval(pollInterval);
+    };
+  }, [isFirebaseActive, saveLog]);
+
   // Route state data selectively based on active Firebase connection
   const feeds = isFirebaseActive ? fbFeeds : localFeeds;
   const logs = isFirebaseActive ? fbLogs : localLogs;
@@ -3957,6 +4032,43 @@ export default function App() {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* UNIVERSAL WEBHOOK CARD */}
+              <div id="universal_webhook_info_card" className="bg-[#090D14]/90 border border-amber-500/15 rounded-xl p-3.5 space-y-2 mt-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-amber-400">🔗 CONECTIVIDADE DE HARDWARE REAL</span>
+                  <span className="text-[8px] bg-emerald-500/10 text-emerald-300 px-1.5 py-0.5 rounded border border-emerald-500/25">ENDPOINT ATIVO</span>
+                </div>
+                <p className="text-[10.5px] leading-relaxed text-gray-400 font-sans">
+                  Configure este endpoint HTTP POST em seu DVR (disparo por e-mail, fotos de alarme por Inteligência Artificial), no node-red ou seu fluxo do n8n para enviar fotos capturadas em tempo real. A nossa IA do Robust Vision analisará a intrusão perometral e notificará o painel/WhatsApp automaticamente:
+                </p>
+                <div className="flex items-center gap-2 bg-[#03070E] p-2 rounded border border-gray-800">
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${window.location.protocol}//${window.location.host}/api/dvr-webhook`}
+                    className="bg-transparent text-gray-300 font-mono text-[9px] w-full border-0 focus:ring-0 p-0 select-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.protocol}//${window.location.host}/api/dvr-webhook`);
+                      showAppAlert("Endereço do Webhook Universal copiado para transferência!", "Endpoint Copiado", "success");
+                    }}
+                    className="p-1 rounded bg-gray-800 hover:bg-gray-750 text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer"
+                    title="Copiar URL"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 002 2h2a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                  </button>
+                </div>
+                <div className="text-[9.5px] text-gray-500 font-mono space-y-1">
+                  <p className="text-gray-400 font-semibold">• Parâmetros aceitos (Multipart-form ou JSON):</p>
+                  <p className="text-gray-400 pl-2">─ <code className="text-amber-300 font-bold">image / file</code>: Arquivo binário da foto do evento ou base64 direto.</p>
+                  <p className="text-gray-400 pl-2">─ <code className="text-emerald-400 font-bold">cameraName</code>: Ex: "Câmera Portão da Loja".</p>
+                  <p className="text-gray-400 pl-2">─ <code className="text-blue-400 font-bold">tradingName</code>: Nome da Loja.</p>
+                  <p className="text-gray-400 pl-2">─ <code className="text-gray-300">whatsapp</code>: Telefone celular formato 5585999999999.</p>
+                </div>
               </div>
             </div>
 
