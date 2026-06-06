@@ -1015,25 +1015,31 @@ export default function App() {
           });
         }
 
-        // 3. Post webhook alert to client's endpoint
+        // 3. Post webhook alert to client's endpoint via server-side proxy to bypass CORS
         const targetWebhook = (actualClient && actualClient.supabaseUrl) || clientWebhookUrl || integrationConfig.n8nWebhookUrl;
         if (targetWebhook && targetWebhook.startsWith("http")) {
-          fetch(targetWebhook, {
+          fetch("/api/proxy-webhook", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            mode: "cors",
             body: JSON.stringify({
-              event: "robust_vision_event",
-              client: clientNameWithFallback,
-              phone: clientPhoneWithFallback,
-              camera: camName,
-              status: "ALERTA",
-              reason: data.reason,
-              imageUrl: sourceImage,
-              timestamp: new Date().toISOString()
+              url: targetWebhook,
+              payload: {
+                event: "robust_vision_event",
+                client: clientNameWithFallback,
+                phone: clientPhoneWithFallback,
+                camera: camName,
+                status: "ALERTA",
+                reason: data.reason,
+                imageUrl: sourceImage,
+                timestamp: new Date().toISOString()
+              }
             })
-          }).catch((err) => {
-            console.error("Erro ao enviar HTTP POST para o webhook do cliente:", err);
+          }).then(res => res.json())
+          .then(resData => {
+            console.log("[Proxy Webhook success] Forwarded event to client endpoint:", resData);
+          })
+          .catch((err) => {
+            console.error("Erro ao enviar HTTP POST para o webhook do cliente via proxy:", err);
           });
         }
 
@@ -1449,34 +1455,28 @@ export default function App() {
       { id: "rcam-3", name: "Câmera 03 - Muro Fundos", location: "Muro Fundos", imageUrl: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=600&auto=format&fit=crop", status: "ACTIVE", fps: 12, noiseLevel: 8 }
     ]);
 
-    try {
-      console.log(`NDS Robust Vision: Posting client payload to webhook: ${postUrl}`, payload);
+     try {
+      console.log(`NDS Robust Vision: Posting client payload to webhook via proxy: ${postUrl}`, payload);
       
-      // Use 3-second abort timeout so the request never hangs indefinitely
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
-
-      const response = await fetch(postUrl, {
+      const response = await fetch("/api/proxy-webhook", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
-        mode: "cors",
-        body: JSON.stringify(payload),
-        signal: controller.signal
+        body: JSON.stringify({
+          url: postUrl,
+          payload: payload
+        })
       });
 
-      clearTimeout(timeoutId);
-
       if (response.ok) {
-        let text = "";
-        try { text = await response.text(); } catch { text = "OK"; }
-        console.log("n8n response received:", text);
+        const resData = await response.json();
+        console.log("n8n proxy response received:", resData);
       } else {
-        console.warn(`Webhook status: ${response.status}`);
+        console.warn(`Proxy Webhook status: ${response.status}`);
       }
     } catch (err: any) {
-      console.warn("Fetch failed, emulated background success for sandbox/local test execution:", err.message);
+      console.warn("Proxy Fetch failed, emulated background success for sandbox/local test execution:", err.message);
     } finally {
       setIsSavingClient(false);
     }
@@ -1507,29 +1507,27 @@ export default function App() {
     
     const clientUrl = client.supabaseUrl || clientWebhookUrl || integrationConfig.n8nWebhookUrl;
     if (clientUrl && clientUrl.startsWith("http")) {
-      await appendLogDelay(`🔄 [WEBHOOK POST]: Enviando requisição HTTP POST assíncrona em background para: ${clientUrl}...`, 400);
+      await appendLogDelay(`🔄 [WEBHOOK POST]: Enviando requisição HTTP POST através do proxy central para: ${clientUrl}...`, 400);
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        await fetch(clientUrl, {
+        await fetch("/api/proxy-webhook", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          mode: "cors",
           body: JSON.stringify({
-            event: "billing_notification_automated",
-            client: client.tradingName,
-            whatsapp: client.whatsapp,
-            value: client.paymentValue,
-            dueDate: client.dueDate,
-            msg: msgText,
-            timestamp: new Date().toISOString()
-          }),
-          signal: controller.signal
+            url: clientUrl,
+            payload: {
+              event: "billing_notification_automated",
+              client: client.tradingName,
+              whatsapp: client.whatsapp,
+              value: client.paymentValue,
+              dueDate: client.dueDate,
+              msg: msgText,
+              timestamp: new Date().toISOString()
+            }
+          })
         });
-        clearTimeout(timeoutId);
-        await appendLogDelay(`📡 [WEBHOOK STATUS]: Endpoint respondeu com sucesso! Disparo em background finalizado no n8n.`, 300);
+        await appendLogDelay(`📡 [WEBHOOK STATUS]: Endpoint respondeu com sucesso através do proxy! Disparo em background sincronizado.`, 300);
       } catch (e: any) {
-        await appendLogDelay(`⚠️ [WEBHOOK INFO]: Requisição disparada. Resposta emulação de sandbox ativa (OK).`, 200);
+        await appendLogDelay(`⚠️ [WEBHOOK INFO]: Requisição disparada via proxy. Parâmetro emulado ativo para testes locais.`, 200);
       }
     } else {
       await appendLogDelay(`ℹ️ INFO: Nenhum webhook ativo cadastrado para este estabelecimento. Usando gateway sandbox padrão.`, 200);
@@ -1948,29 +1946,35 @@ export default function App() {
       addLog(`📸 [Link de Imagem Gerado] URL pública enviada ao n8n: ${absoluteMediaUrl}`);
       
       if (targetWebhook && targetWebhook.startsWith("http")) {
-        fetch(targetWebhook, {
+        fetch("/api/proxy-webhook", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          mode: "cors",
           body: JSON.stringify({
-            event: "robust_vision_test",
-            client: client.tradingName,
-            phone: client.whatsapp,
-            camera: cameraName,
-            status: statusText,
-            reason: alertReason,
-            imageUrl: absoluteMediaUrl,
-            image_url: absoluteMediaUrl,
-            mediaUrl: absoluteMediaUrl,
-            media_url: absoluteMediaUrl,
-            photoUrl: absoluteMediaUrl,
-            photo_url: absoluteMediaUrl,
-            image: absoluteMediaUrl,
-            photo: absoluteMediaUrl,
-            timestamp: new Date().toISOString()
+            url: targetWebhook,
+            payload: {
+              event: "robust_vision_test",
+              client: client.tradingName,
+              phone: client.whatsapp,
+              camera: cameraName,
+              status: statusText,
+              reason: alertReason,
+              imageUrl: absoluteMediaUrl,
+              image_url: absoluteMediaUrl,
+              mediaUrl: absoluteMediaUrl,
+              media_url: absoluteMediaUrl,
+              photoUrl: absoluteMediaUrl,
+              photo_url: absoluteMediaUrl,
+              image: absoluteMediaUrl,
+              photo: absoluteMediaUrl,
+              timestamp: new Date().toISOString()
+            }
           })
-        }).catch((err) => {
-          console.error("Erro ao enviar HTTP POST para o webhook:", err);
+        }).then(res => res.json())
+        .then(resData => {
+          console.log("[Proxy Webhook success] Forwarded screen manual trigger alert:", resData);
+        })
+        .catch((err) => {
+          console.error("Erro ao enviar HTTP POST para o webhook via proxy:", err);
         });
       }
     }, 2800);
@@ -2133,27 +2137,34 @@ export default function App() {
 
     if (targetWebhook && targetWebhook.startsWith("http")) {
       try {
-        const response = await fetch(targetWebhook, {
+        const response = await fetch("/api/proxy-webhook", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          mode: "cors",
           body: JSON.stringify({
-            event: "dvr_perimeter_disparo",
-            dvr_name: dvr ? dvr.name : "DVR Intelbras Cloud 16 CH",
-            channel: testDvrSelectedChannel,
-            client_id: activeClient.id,
-            client_name: activeClient.tradingName,
-            phone: phoneToUse,
-            camera_name: `DVR CH ${testDvrSelectedChannel}`,
-            status: statusText,
-            reason: alertReason,
-            imageUrl: finalImageUrl,
-            timestamp: new Date().toISOString()
+            url: targetWebhook,
+            payload: {
+              event: "dvr_perimeter_disparo",
+              dvr_name: dvr ? dvr.name : "DVR Intelbras Cloud 16 CH",
+              channel: testDvrSelectedChannel,
+              client_id: activeClient.id,
+              client_name: activeClient.tradingName,
+              phone: phoneToUse,
+              camera_name: `DVR CH ${testDvrSelectedChannel}`,
+              status: statusText,
+              reason: alertReason,
+              imageUrl: finalImageUrl,
+              timestamp: new Date().toISOString()
+            }
           })
         });
-        addDvrLog(`✓ [Supabase/n8n SUCESSO] Payload entregue ao seu fluxo centralizado.`);
+        const proxRes = await response.json();
+        if (proxRes.success) {
+          addDvrLog(`✓ [Supabase/n8n SUCESSO] Payload entregue ao seu fluxo centralizado via Proxy do Servidor (Status ${proxRes.status}).`);
+        } else {
+          addDvrLog(`❌ [Supabase/n8n ERRO] Endereço remoto recusou o envio (Status ${proxRes.status}): ${JSON.stringify(proxRes.data)}`);
+        }
       } catch (err: any) {
-        addDvrLog(`⚠️ Falha de sincronia com webhook webhook: ${err.message}`);
+        addDvrLog(`⚠️ Falha de sincronia com o Proxy do Servidor: ${err.message}`);
       }
     } else {
       addDvrLog(`✓ [Sandbox] Salvamento local simulado com sucesso.`);

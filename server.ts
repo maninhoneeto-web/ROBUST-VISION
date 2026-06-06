@@ -104,6 +104,43 @@ app.post("/api/send-whatsapp", async (req, res) => {
       });
     }
 
+    // Convert local sandboxed or remote images to embedded Base64 Representation
+    // to bypass authentication/private-network hurdles on Z-API / Evolution API
+    let resolvedImagePayload = imageUrl || "";
+    if (imageUrl) {
+      if (imageUrl.startsWith("data:")) {
+        resolvedImagePayload = imageUrl; // already base64
+      } else if (imageUrl.includes("/api/uploads/")) {
+        try {
+          const parts = imageUrl.split("/api/uploads/");
+          const filename = parts[parts.length - 1].split("?")[0];
+          const filePath = path.join(process.cwd(), "uploads", filename);
+          if (fs.existsSync(filePath)) {
+            const ext = path.extname(filePath).toLowerCase();
+            const mime = ext === ".png" ? "image/png" : "image/jpeg";
+            const content = fs.readFileSync(filePath).toString("base64");
+            resolvedImagePayload = `data:${mime};base64,${content}`;
+            console.log(`[Proxy Base64] Converted local upload file '${filename}' for Z-API/Evolution API compatibility.`);
+          }
+        } catch (e: any) {
+          console.warn("[Proxy Base64] Failed local conversion:", e.message);
+        }
+      } else if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+        try {
+          console.info(`[Proxy Base64] Fetching remote preset image to convert to offline Base64: ${imageUrl}`);
+          const imgRes = await fetch(imageUrl);
+          if (imgRes.ok) {
+            const arrayBuffer = await imgRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            const contentType = imgRes.headers.get("content-type") || "image/jpeg";
+            resolvedImagePayload = `data:${contentType};base64,${buffer.toString("base64")}`;
+          }
+        } catch (e: any) {
+          console.warn("[Proxy Base64] Remote conversion failed, falling back to raw link:", e.message);
+        }
+      }
+    }
+
     let responseStatus = 200;
     let responseData = null;
 
@@ -117,11 +154,11 @@ app.post("/api/send-whatsapp", async (req, res) => {
         caption: message
       };
 
-      if (imageUrl) {
-        reqBody.image = imageUrl;
+      if (resolvedImagePayload) {
+        reqBody.image = resolvedImagePayload;
       }
 
-      console.log(`Sending to Z-API (${targetUrl}):`, JSON.stringify(reqBody));
+      console.log(`Sending to Z-API (${targetUrl}) with ${resolvedImagePayload.startsWith("data:") ? "Base64 payload" : "URL link"}`);
       const resZapi = await fetch(targetUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -144,11 +181,11 @@ app.post("/api/send-whatsapp", async (req, res) => {
         mediaType: "image"
       };
 
-      if (imageUrl) {
-        reqBody.media = imageUrl;
+      if (resolvedImagePayload) {
+        reqBody.media = resolvedImagePayload;
       }
 
-      console.log(`Sending to Evolution API (${targetUrl}):`, JSON.stringify(reqBody));
+      console.log(`Sending to Evolution API (${targetUrl}) with ${resolvedImagePayload.startsWith("data:") ? "Base64 payload" : "URL link"}`);
       const resEvo = await fetch(targetUrl, {
         method: "POST",
         headers: {
@@ -172,15 +209,15 @@ app.post("/api/send-whatsapp", async (req, res) => {
       const reqBody = {
         to,
         message,
-        imageUrl,
+        imageUrl: resolvedImagePayload,
         timestamp: new Date().toISOString()
       };
 
-      console.log(`Sending to Custom Webhook (${url}):`, JSON.stringify(reqBody));
+      console.log(`Sending to Custom Webhook (${url})`);
       const resWeb = await fetch(url, {
         method: "POST",
         headers: reqHeaders,
-        body: reqBody ? JSON.stringify(reqBody) : ""
+        body: JSON.stringify(reqBody)
       });
 
       responseStatus = resWeb.status;
@@ -194,6 +231,63 @@ app.post("/api/send-whatsapp", async (req, res) => {
     });
   } catch (err: any) {
     console.error("Erro no envio do WhatsApp Proxy:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Server-side Webhook Proxy Route to bypass browser CORS constraints when communicating with n8n/Supabase/Node-RED
+app.post("/api/proxy-webhook", async (req, res) => {
+  try {
+    const { url, payload } = req.body;
+    if (!url) {
+      return res.status(400).json({ error: "Parâmetro 'url' é obrigatório." });
+    }
+
+    console.log(`[Proxy Webhook] Forwarding payload to external: ${url}`);
+    
+    // Check if the payload contains any local /api/uploads/ references 
+    // and replace them with base64 embedded representation if we are forwarding to a remote web hook
+    if (payload && payload.imageUrl && payload.imageUrl.includes("/api/uploads/")) {
+      try {
+        const parts = payload.imageUrl.split("/api/uploads/");
+        const filename = parts[parts.length - 1].split("?")[0];
+        const filePath = path.join(process.cwd(), "uploads", filename);
+        if (fs.existsSync(filePath)) {
+          const ext = path.extname(filePath).toLowerCase();
+          const mime = ext === ".png" ? "image/png" : "image/jpeg";
+          const content = fs.readFileSync(filePath).toString("base64");
+          payload.imageUrl = `data:${mime};base64,${content}`;
+          payload.image_url = payload.imageUrl;
+          console.log(`[Proxy Webhook] Converted local image reference to embedded base64 in webhook payload.`);
+        }
+      } catch (err: any) {
+         console.warn("[Proxy Webhook] Failed local conversion in payload:", err.message);
+      }
+    }
+
+    const n8nRes = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const status = n8nRes.status;
+    let data = null;
+    try {
+      data = await n8nRes.json();
+    } catch (_) {
+      try {
+        data = await n8nRes.text();
+      } catch (_) {}
+    }
+
+    return res.json({
+      success: n8nRes.ok,
+      status,
+      data
+    });
+  } catch (err: any) {
+    console.error("[Proxy Webhook] Error forwarding payload:", err.message);
     return res.status(500).json({ error: err.message });
   }
 });
